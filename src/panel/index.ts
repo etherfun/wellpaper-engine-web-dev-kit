@@ -190,12 +190,23 @@ export function createPanel(deps: PanelDeps) {
     }
   }
 
+  function updateRazerStatus(connected: boolean, error?: string) {
+    if (!panelController) return;
+    const root = (panelController as any).shadowRoot;
+    if (!root) return;
+    const el = root.getElementById('__we_rgb-content');
+    if (el && (el as any).__updateRazerStatus) {
+      (el as any).__updateRazerStatus(connected, error ?? '');
+    }
+  }
+
   return {
     show,
     hide,
     toggle,
     destroy,
     updateRgbFrame,
+    updateRazerStatus,
     get isVisible() {
       return isVisible;
     },
@@ -215,4 +226,5 @@ interface PanelUIController {
   destroy(): void;
   updateStatus(isRealWE: boolean): void;
   updateRgbState(loaded: boolean): void;
+  updateRazerStatus?(connected: boolean, error?: string): void;
 }

@@ -507,6 +507,20 @@ function populateRgbSection(container: HTMLElement) {
   statusRow.appendChild(statusEl);
   container.appendChild(statusRow);
 
+  // Razer Chroma 连接状态
+  const razerRow = document.createElement('div');
+  razerRow.className = 'row';
+  razerRow.style.display = 'none'; // 默认隐藏，由 __updateRazerStatus 控制
+  const razerLabel = document.createElement('label');
+  razerLabel.textContent = 'Razer';
+  razerRow.appendChild(razerLabel);
+  const razerEl = document.createElement('span');
+  razerEl.id = 'rgb-razer-status';
+  razerEl.style.cssText = 'font-size: 10px;';
+  razerEl.textContent = '检查中...';
+  razerRow.appendChild(razerEl);
+  container.appendChild(razerRow);
+
   // RGB 帧预览 canvas
   const canvasRow = document.createElement('div');
   canvasRow.style.cssText = 'margin: 4px 0; display: flex; flex-direction: column; gap: 4px;';
@@ -536,7 +550,6 @@ function populateRgbSection(container: HTMLElement) {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // 缩放绘制到 canvas
     const imgData = ctx.createImageData(frame.width, frame.height);
     for (let i = 0; i < frame.pixels.length; i += 3) {
       const idx = (i / 3) * 4;
@@ -549,13 +562,27 @@ function populateRgbSection(container: HTMLElement) {
 
     infoLine.textContent = `${frame.width}×${frame.height} · ${(frame.pixels.length / 1024).toFixed(1)}KB`;
 
-    // 渲染调色板
     paletteRow.innerHTML = '';
     for (const swatch of frame.palette) {
       const dot = document.createElement('span');
       dot.style.cssText = `display:inline-block;width:16px;height:16px;border-radius:3px;background:${swatch.color};border:1px solid rgba(255,255,255,0.15);cursor:help;`;
       dot.title = `${swatch.color} (${(swatch.ratio * 100).toFixed(0)}%)`;
       paletteRow.appendChild(dot);
+    }
+  };
+
+  // 公开 Razer 状态更新方法
+  (container as any).__updateRazerStatus = function (connected: boolean, error: string) {
+    razerRow.style.display = '';
+    if (connected) {
+      razerEl.textContent = '✅ Connected';
+      razerEl.style.color = '#4CAF50';
+    } else if (error) {
+      razerEl.textContent = '⚠️ ' + error;
+      razerEl.style.color = '#FF9800';
+    } else {
+      razerEl.textContent = '❌ Disconnected';
+      razerEl.style.color = '#FF5252';
     }
   };
 }
