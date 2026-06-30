@@ -320,6 +320,13 @@ export function createWeDevKit(options?: DevKitConfig): DevKitInstance {
       audioSimulator: audioSim,
       mediaMock,
       lifecycleMock,
+      onRazerToggle: (enabled: boolean) => {
+        // 动态切换 Razer Chroma 连接
+        const mock = rgbMock as any;
+        if (mock?.setRealRazer) {
+          mock.setRealRazer(enabled);
+        }
+      },
     });
 
     // 连接 RGB 帧数据到面板

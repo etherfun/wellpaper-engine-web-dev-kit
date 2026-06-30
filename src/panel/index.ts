@@ -28,10 +28,11 @@ interface PanelDeps {
     simulateResume: () => void;
     simulateFpsChange: (fps: number) => void;
   };
+  onRazerToggle?: (enabled: boolean) => void;
 }
 
 export function createPanel(deps: PanelDeps) {
-  const { config, state, audioSimulator, mediaMock, lifecycleMock } = deps;
+  const { config, state, audioSimulator, mediaMock, lifecycleMock, onRazerToggle } = deps;
   let panelController: PanelUIController | null = null;
   let isVisible = false;
   let props: ProjectPropertyDef[] = [];
@@ -70,6 +71,11 @@ export function createPanel(deps: PanelDeps) {
       },
       {
         onPropertyChange: (key, value) => {
+          // 拦截虚拟属性 — Razer Chroma 开关
+          if (key === '_devkit_razer_chroma') {
+            if (onRazerToggle) onRazerToggle(value as boolean);
+            return;
+          }
           // 推送到 wallpaperPropertyListener
           const listener = (window as any).wallpaperPropertyListener;
           if (listener?.applyUserProperties) {
@@ -198,6 +204,12 @@ export function createPanel(deps: PanelDeps) {
     if (el && (el as any).__updateRazerStatus) {
       (el as any).__updateRazerStatus(connected, error ?? '');
     }
+  }
+
+  /** 拦截虚拟属性 _devkit_razer_chroma，转发到 rgbMock（通过 panelController 传给外部） */
+  let _onRazerToggle: ((enabled: boolean) => void) | null = null;
+  function setRazerToggleHandler(handler: (enabled: boolean) => void) {
+    _onRazerToggle = handler;
   }
 
   return {

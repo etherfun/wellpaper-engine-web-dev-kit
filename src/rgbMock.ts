@@ -27,9 +27,11 @@ const ALL_DEVICES = [DEVICE_KEYBOARD, DEVICE_MOUSE, DEVICE_MOUSEPAD, DEVICE_HEAD
 export function createRgbMock(
   state: InternalState,
   onRgbFrame?: RgbFrameCallback,
-  realRazer?: boolean
+  initialRealRazer?: boolean
 ) {
   let pluginLoaded = false;
+  let razerEnabled = !!initialRealRazer;
+  let razerInitialized = false;
 
   // ---- 真实的 Razer Chroma 连接 ----
   let razerSessionUri: string | null = null;
@@ -39,7 +41,7 @@ export function createRgbMock(
   let razerError = '';
 
   async function initRazerChroma() {
-    if (!realRazer) return;
+    if (!razerEnabled) return;
 
     try {
       const resp = await fetch(CHROMA_SDK_URI, {
@@ -64,6 +66,7 @@ export function createRgbMock(
       razerSessionUri = data.uri;
       razerSessionId = data.sessionid;
       razerConnected = true;
+      razerInitialized = true;
       razerError = '';
       console.log(
         `[WE Dev Kit] Razer Chroma connected: session=${razerSessionId} uri=${razerSessionUri}`
@@ -148,8 +151,11 @@ export function createRgbMock(
   function install() {
     const w = window as any;
 
-    // ---- wallpaperPluginListener ----
-    w.wallpaperPluginListener = {
+    // ---- wallpaperPluginListener — 保存项目原有的 listener 链 ----
+    // 注意：dev-kit 的 script 在 bundle.js 之前加载，当 rgbMock 安装时
+    // 项目尚未注册其 wallpaperPluginListener。因此我们需要在项目注册后
+    // 自动接入链式调用。使用 Object.defineProperty 拦截 setter。
+    const devKitHandler = {
       onPluginLoaded: (name: string, version: string) => {
         console.log(`[WE Dev Kit] pluginLoaded: ${name} v${version}`);
         if (name === 'led') {
@@ -158,6 +164,39 @@ export function createRgbMock(
         }
       },
     };
+
+    let projectListener: any = null;
+    // 保存项目注册的 listener，链式调用 dev-kit 和项目的 handler
+    function createWrappedListener(project: any): any {
+      if (!project) return devKitHandler;
+      return {
+        onPluginLoaded: (name: string, version: string) => {
+          // 先调 dev-kit handler
+          if (devKitHandler.onPluginLoaded) {
+            devKitHandler.onPluginLoaded(name, version);
+          }
+          // 再调项目 handler（更新 Pinia store 的 wallpaper_settings.ledPlugin）
+          if (project?.onPluginLoaded) {
+            project.onPluginLoaded(name, version);
+          }
+        },
+      };
+    }
+
+    // 用 Object.defineProperty 拦截 wallpaperPluginListener 的写入
+    // 确保无论是 dev-kit 先设还是项目后设，两边的 handler 都能被调用
+    let _storedListener = createWrappedListener(null);
+    Object.defineProperty(w, 'wallpaperPluginListener', {
+      get() {
+        return _storedListener;
+      },
+      set(val: any) {
+        projectListener = val;
+        _storedListener = createWrappedListener(val);
+      },
+      configurable: true,
+      enumerable: true,
+    });
 
     // ---- wpPlugins.led ----
     if (!w.wpPlugins) w.wpPlugins = {};
@@ -180,13 +219,14 @@ export function createRgbMock(
         }
 
         // 如果开启了 Razer 硬件转发
-        if (realRazer) {
+        if (razerEnabled) {
           forwardToRazer(pixels, width, height);
         }
       },
     };
 
-    // 模拟插件加载延迟
+    // 模拟插件加载延迟 — 通过 Object.defineProperty，项目后续设置的
+    // wallpaperPluginListener 会自动包装，无需额外操作
     setTimeout(() => {
       if (w.wallpaperPluginListener?.onPluginLoaded) {
         w.wallpaperPluginListener.onPluginLoaded('led', '1.0');
@@ -198,9 +238,17 @@ export function createRgbMock(
       }
     }, 500);
 
+    // 额外延迟确保 bundle.js 加载后重新触发（兜底）
+    setTimeout(() => {
+      const current = w.wallpaperPluginListener;
+      if (current?.onPluginLoaded) {
+        current.onPluginLoaded('led', '1.0');
+        current.onPluginLoaded('cue', '1.0');
+      }
+    }, 3000);
+
     // 如果需要真实 Razer 硬件，初始化连接
-    if (realRazer) {
-      // 延迟初始化，等插件加载后再尝试
+    if (razerEnabled) {
       setTimeout(() => {
         initRazerChroma();
       }, 1000);
@@ -208,14 +256,16 @@ export function createRgbMock(
 
     state.onDestroy(() => {
       uninitRazer();
-      delete w.wallpaperPluginListener;
+      try {
+        delete w.wallpaperPluginListener;
+      } catch {}
       if (w.wpPlugins) {
         delete w.wpPlugins.led;
       }
     });
 
     console.log(
-      `[WE Dev Kit] RGB Mock installed${realRazer ? ' (real Razer Chroma enabled)' : ''}`
+      `[WE Dev Kit] RGB Mock installed${razerEnabled ? ' (real Razer Chroma enabled)' : ''}`
     );
   }
 
@@ -230,6 +280,17 @@ export function createRgbMock(
     },
     get razerError() {
       return razerError;
+    },
+    async setRealRazer(enabled: boolean) {
+      razerEnabled = enabled;
+      if (enabled) {
+        if (!razerInitialized) {
+          await initRazerChroma();
+        }
+      } else {
+        await uninitRazer();
+        razerInitialized = false;
+      }
     },
     reloadPlugin() {
       const w = window as any;

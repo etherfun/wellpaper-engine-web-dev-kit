@@ -145,7 +145,7 @@ export function renderPanel(
 
   // RGB Section
   sections.rgb = createSection(body, '▶ RGB LED', 'rgb-content', true, '');
-  populateRgbSection(sections.rgb);
+  populateRgbSection(sections.rgb, callbacks);
 
   // Lifecycle Section
   sections.lifecycle = createSection(body, '▶ Lifecycle', 'lifecycle-content', true, '');
@@ -494,7 +494,7 @@ function populateMediaSection(
 
 // ---- RGB Section ----
 
-function populateRgbSection(container: HTMLElement) {
+function populateRgbSection(container: HTMLElement, cb?: any) {
   // 插件状态行
   const statusRow = document.createElement('div');
   statusRow.className = 'row';
@@ -507,18 +507,26 @@ function populateRgbSection(container: HTMLElement) {
   statusRow.appendChild(statusEl);
   container.appendChild(statusRow);
 
-  // Razer Chroma 连接状态
+  // Razer Chroma 开关
   const razerRow = document.createElement('div');
   razerRow.className = 'row';
-  razerRow.style.display = 'none'; // 默认隐藏，由 __updateRazerStatus 控制
   const razerLabel = document.createElement('label');
   razerLabel.textContent = 'Razer';
   razerRow.appendChild(razerLabel);
-  const razerEl = document.createElement('span');
-  razerEl.id = 'rgb-razer-status';
-  razerEl.style.cssText = 'font-size: 10px;';
-  razerEl.textContent = '检查中...';
-  razerRow.appendChild(razerEl);
+  const razerToggle = document.createElement('input');
+  razerToggle.type = 'checkbox';
+  razerToggle.title = '连接到真实的 Razer Chroma 硬件（需安装 Synapse）';
+  razerToggle.addEventListener('change', () => {
+    if (cb?.onPropertyChange) {
+      cb.onPropertyChange('_devkit_razer_chroma', razerToggle.checked);
+    }
+  });
+  razerRow.appendChild(razerToggle);
+  const razerStatusEl = document.createElement('span');
+  razerStatusEl.id = 'rgb-razer-status';
+  razerStatusEl.style.cssText = 'font-size: 10px;color:#666;';
+  razerStatusEl.textContent = '未连接';
+  razerRow.appendChild(razerStatusEl);
   container.appendChild(razerRow);
 
   // RGB 帧预览 canvas
@@ -717,11 +725,14 @@ function populatePropertiesSection(
     propValues[p.key] = p.value;
   }
 
-  // 从 panel controller 注册的属性变更回调更新 propValues
+  // 从 panel controller 注册的属性变更回调更新 propValues 和 props
   const origOnPropChange = cb.onPropertyChange;
   cb.onPropertyChange = (key: string, value: unknown) => {
     propValues[key] = value;
-    // 重新求值所有条件的可见性
+    // 同步更新 props 数组中的 value，使 renderProps 能读到最新值
+    const prop = props.find(p => p.key === key);
+    if (prop) prop.value = value;
+    // 重新求值所有条件的可见性 + 刷新 UI
     refreshVisibility();
     if (origOnPropChange) origOnPropChange(key, value);
   };
