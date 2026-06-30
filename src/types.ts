@@ -40,11 +40,6 @@ export interface MockTrack {
   highContrastColor?: string;
 }
 
-export interface RgbConfig {
-  /** 是否尝试连接到真实的 Razer Chroma 硬件（需安装 Razer Synapse + Chroma SDK） */
-  realRazer?: boolean;
-}
-
 export interface PanelConfig {
   /** 面板初始位置 */
   position?: { x: number; y: number };
@@ -65,8 +60,8 @@ export interface DevKitConfig {
   media?: boolean | MediaConfig;
   /** 属性监听补齐 */
   properties?: boolean;
-  /** RGB LED 模拟（可传 RgbConfig 开启真 Razer 硬件连接） */
-  rgb?: boolean | RgbConfig;
+  /** RGB LED 模拟 */
+  rgb?: boolean;
   /** 生命周期事件 */
   lifecycle?: boolean;
   /** 控制面板 */
@@ -189,11 +184,9 @@ export interface PanelController {
 export interface ResolvedAudioConfig extends Required<AudioConfig> {}
 export interface ResolvedMediaConfig extends Required<MediaConfig> {}
 export interface ResolvedPanelConfig extends Required<PanelConfig> {}
-export interface ResolvedRgbConfig extends Required<RgbConfig> {}
 
 export interface RequiredConfig extends Required<DevKitConfig> {
   audio: ResolvedAudioConfig;
   media: ResolvedMediaConfig;
   panel: ResolvedPanelConfig;
-  rgb: ResolvedRgbConfig;
 }

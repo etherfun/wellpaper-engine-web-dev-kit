@@ -33,8 +33,6 @@ import type {
   ResolvedAudioConfig,
   ResolvedMediaConfig,
   ResolvedPanelConfig,
-  ResolvedRgbConfig,
-  RgbConfig,
   RgbFrameData,
 } from './types';
 
@@ -63,10 +61,6 @@ const DEFAULT_MEDIA_CONFIG: MediaConfig = {
   cycleIntervalMs: 8000,
 };
 
-const DEFAULT_RGB_CONFIG: RgbConfig = {
-  realRazer: false,
-};
-
 const DEFAULT_PANEL_CONFIG: PanelConfig = {
   position: { x: 0, y: 0 },
   collapsed: false,
@@ -92,14 +86,13 @@ function resolveConfig(opts?: DevKitConfig): RequiredConfig {
   const audio = resolveAudioConfig(base.audio as DevKitConfig['audio']);
   const media = resolveMediaConfig(base.media as DevKitConfig['media']);
   const panel = resolvePanelConfig(base.panel as DevKitConfig['panel']);
-  const rgb = resolveRgbConfig(base.rgb as DevKitConfig['rgb']);
   return {
     enabled: base.enabled ?? true,
     autoDetect: base.autoDetect ?? true,
     audio,
     media,
     properties: base.properties ?? true,
-    rgb,
+    rgb: base.rgb ?? true,
     lifecycle: base.lifecycle ?? true,
     panel,
   };
@@ -136,18 +129,6 @@ function resolvePanelConfig(panel: boolean | PanelConfig | undefined): ResolvedP
     return def;
   }
   return { ...def, ...panel };
-}
-
-// 判断各模块是否启用
-function resolveRgbConfig(rgb: boolean | RgbConfig | undefined): ResolvedRgbConfig {
-  const def: ResolvedRgbConfig = { realRazer: false };
-  if (rgb === false || rgb === undefined) {
-    return def;
-  }
-  if (typeof rgb !== 'object') {
-    return def;
-  }
-  return { ...def, ...rgb };
 }
 
 // 判断各模块是否启用
@@ -275,10 +256,9 @@ export function createWeDevKit(options?: DevKitConfig): DevKitInstance {
 
   let rgbMock: ReturnType<typeof createRgbMock> | undefined;
   if (config.rgb) {
-    const rc = config.rgb as ResolvedRgbConfig;
     rgbMock = createRgbMock(state, (frame) => {
       if (forwardRgbFrame) forwardRgbFrame(frame);
-    }, rc.realRazer);
+    });
   }
 
   let lifecycleMock: ReturnType<typeof createLifecycleMock> | undefined;
@@ -320,21 +300,10 @@ export function createWeDevKit(options?: DevKitConfig): DevKitInstance {
       audioSimulator: audioSim,
       mediaMock,
       lifecycleMock,
-      onRazerToggle: (enabled: boolean) => {
-        // 动态切换 Razer Chroma 连接
-        const mock = rgbMock as any;
-        if (mock?.setRealRazer) {
-          mock.setRealRazer(enabled);
-        }
-      },
     });
 
     // 连接 RGB 帧数据到面板
     forwardRgbFrame = (frame) => panelController!.updateRgbFrame(frame);
-    // 连接 Razer 状态到面板
-    if (rgbMock && ('razerConnected' in rgbMock)) {
-      panelController!.updateRazerStatus(rgbMock.razerConnected, rgbMock.razerError);
-    }
 
     // URL 参数检测：?dev-panel=true / ?dev-kit=true → 自动显示
     const urlParams = new URLSearchParams(window.location.search);

@@ -507,28 +507,6 @@ function populateRgbSection(container: HTMLElement, cb?: any) {
   statusRow.appendChild(statusEl);
   container.appendChild(statusRow);
 
-  // Razer Chroma 开关
-  const razerRow = document.createElement('div');
-  razerRow.className = 'row';
-  const razerLabel = document.createElement('label');
-  razerLabel.textContent = 'Razer';
-  razerRow.appendChild(razerLabel);
-  const razerToggle = document.createElement('input');
-  razerToggle.type = 'checkbox';
-  razerToggle.title = '连接到真实的 Razer Chroma 硬件（需安装 Synapse）';
-  razerToggle.addEventListener('change', () => {
-    if (cb?.onPropertyChange) {
-      cb.onPropertyChange('_devkit_razer_chroma', razerToggle.checked);
-    }
-  });
-  razerRow.appendChild(razerToggle);
-  const razerStatusEl = document.createElement('span');
-  razerStatusEl.id = 'rgb-razer-status';
-  razerStatusEl.style.cssText = 'font-size: 10px;color:#666;';
-  razerStatusEl.textContent = '未连接';
-  razerRow.appendChild(razerStatusEl);
-  container.appendChild(razerRow);
-
   // RGB 帧预览 canvas
   const canvasRow = document.createElement('div');
   canvasRow.style.cssText = 'margin: 4px 0; display: flex; flex-direction: column; gap: 4px;';
@@ -576,21 +554,6 @@ function populateRgbSection(container: HTMLElement, cb?: any) {
       dot.style.cssText = `display:inline-block;width:16px;height:16px;border-radius:3px;background:${swatch.color};border:1px solid rgba(255,255,255,0.15);cursor:help;`;
       dot.title = `${swatch.color} (${(swatch.ratio * 100).toFixed(0)}%)`;
       paletteRow.appendChild(dot);
-    }
-  };
-
-  // 公开 Razer 状态更新方法
-  (container as any).__updateRazerStatus = function (connected: boolean, error: string) {
-    razerRow.style.display = '';
-    if (connected) {
-      razerEl.textContent = '✅ Connected';
-      razerEl.style.color = '#4CAF50';
-    } else if (error) {
-      razerEl.textContent = '⚠️ ' + error;
-      razerEl.style.color = '#FF9800';
-    } else {
-      razerEl.textContent = '❌ Disconnected';
-      razerEl.style.color = '#FF5252';
     }
   };
 }

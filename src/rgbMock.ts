@@ -4,157 +4,20 @@
  * 模拟 WE 的 LED / CUE 插件加载机制：
  *   - window.wallpaperPluginListener.onPluginLoaded(name, version)
  *   - window.wpPlugins.led.setAllDevicesByImageData(imageData, width, height)
- *
- * 可选：通过 realRazer 选项连接到真实的 Razer Chroma 硬件（需安装 Razer Synapse）。
- * 使用 Razer Chroma REST API（localhost:54235）直接通信，不依赖额外 SDK 包。
  */
 
 import type { InternalState, RgbFrameCallback } from './types';
 
-const CHROMA_SDK_URI = 'http://localhost:54235/razer/chromasdk';
-const HEARTBEAT_INTERVAL_MS = 10000;
-
-// Razer Chroma REST API 设备类型
-const DEVICE_KEYBOARD = 'keyboard';
-const DEVICE_MOUSE = 'mouse';
-const DEVICE_MOUSEPAD = 'mousemat';
-const DEVICE_HEADSET = 'headset';
-const DEVICE_KEYPAD = 'keypad';
-const DEVICE_CHROMALINK = 'chromalink';
-
-const ALL_DEVICES = [DEVICE_KEYBOARD, DEVICE_MOUSE, DEVICE_MOUSEPAD, DEVICE_HEADSET];
-
 export function createRgbMock(
   state: InternalState,
-  onRgbFrame?: RgbFrameCallback,
-  initialRealRazer?: boolean
+  onRgbFrame?: RgbFrameCallback
 ) {
   let pluginLoaded = false;
-  let razerEnabled = !!initialRealRazer;
-  let razerInitialized = false;
-
-  // ---- 真实的 Razer Chroma 连接 ----
-  let razerSessionUri: string | null = null;
-  let razerSessionId: number | null = null;
-  let razerHeartbeatTimer: ReturnType<typeof setInterval> | null = null;
-  let razerConnected = false;
-  let razerError = '';
-
-  async function initRazerChroma() {
-    if (!razerEnabled) return;
-
-    try {
-      const resp = await fetch(CHROMA_SDK_URI, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: 'PerfectWall Dev Kit',
-          description: 'WE Dev Kit - RGB simulation',
-          author: { name: 'PerfectWall', contact: '' },
-          device_supported: ALL_DEVICES,
-          category: 'application',
-        }),
-      });
-
-      if (!resp.ok) {
-        razerError = `Razer SDK init failed: HTTP ${resp.status}`;
-        console.warn(`[WE Dev Kit] ${razerError}`);
-        return;
-      }
-
-      const data = await resp.json();
-      razerSessionUri = data.uri;
-      razerSessionId = data.sessionid;
-      razerConnected = true;
-      razerInitialized = true;
-      razerError = '';
-      console.log(
-        `[WE Dev Kit] Razer Chroma connected: session=${razerSessionId} uri=${razerSessionUri}`
-      );
-
-      // 启动心跳
-      razerHeartbeatTimer = setInterval(doHeartbeat, HEARTBEAT_INTERVAL_MS);
-    } catch (err: any) {
-      razerError = `Razer SDK unavailable: ${err.message}`;
-      console.warn(`[WE Dev Kit] ${razerError} — 请确认已安装 Razer Synapse`);
-    }
-  }
-
-  async function doHeartbeat() {
-    if (!razerSessionUri) return;
-    try {
-      await fetch(`${razerSessionUri}/heartbeat`, { method: 'PUT' });
-    } catch {
-      // 忽略心跳失败
-    }
-  }
-
-  /** 将 RGB 像素数据转发到 Razer Chroma 硬件 */
-  async function forwardToRazer(pixels: number[], width: number, height: number) {
-    if (!razerConnected || !razerSessionUri) return;
-
-    // 计算整体主色（全像素平均）
-    let totalR = 0, totalG = 0, totalB = 0, count = 0;
-    for (let i = 0; i < pixels.length; i += 3) {
-      totalR += pixels[i] ?? 0;
-      totalG += pixels[i + 1] ?? 0;
-      totalB += pixels[i + 2] ?? 0;
-      count++;
-    }
-    if (count === 0) return;
-
-    const avgR = Math.round(totalR / count);
-    const avgG = Math.round(totalG / count);
-    const avgB = Math.round(totalB / count);
-    // Razer 使用 BGR 格式 0x00BBGGRR
-    const color = (avgB << 16) | (avgG << 8) | avgR;
-
-    const effectBody = {
-      effect: 'CHROMA_STATIC',
-      param: { color },
-    };
-
-    for (const device of ALL_DEVICES) {
-      try {
-        const resp = await fetch(`${razerSessionUri}/${device}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(effectBody),
-        });
-        if (!resp.ok) {
-          // 某些设备可能不存在，静默跳过
-        }
-      } catch {
-        // 静默跳过
-      }
-    }
-  }
-
-  /** 断开 Razer Chroma 连接 */
-  async function uninitRazer() {
-    if (razerHeartbeatTimer) {
-      clearInterval(razerHeartbeatTimer);
-      razerHeartbeatTimer = null;
-    }
-    if (razerSessionUri) {
-      try {
-        await fetch(razerSessionUri, { method: 'DELETE' });
-      } catch {}
-    }
-    razerConnected = false;
-    razerSessionUri = null;
-    razerSessionId = null;
-  }
-
-  // ---- 安装 ----
 
   function install() {
     const w = window as any;
 
-    // ---- wallpaperPluginListener — 保存项目原有的 listener 链 ----
-    // 注意：dev-kit 的 script 在 bundle.js 之前加载，当 rgbMock 安装时
-    // 项目尚未注册其 wallpaperPluginListener。因此我们需要在项目注册后
-    // 自动接入链式调用。使用 Object.defineProperty 拦截 setter。
+    // ---- wallpaperPluginListener — 保留项目原有的 listener 链 ----
     const devKitHandler = {
       onPluginLoaded: (name: string, version: string) => {
         console.log(`[WE Dev Kit] pluginLoaded: ${name} v${version}`);
@@ -166,16 +29,13 @@ export function createRgbMock(
     };
 
     let projectListener: any = null;
-    // 保存项目注册的 listener，链式调用 dev-kit 和项目的 handler
     function createWrappedListener(project: any): any {
       if (!project) return devKitHandler;
       return {
         onPluginLoaded: (name: string, version: string) => {
-          // 先调 dev-kit handler
           if (devKitHandler.onPluginLoaded) {
             devKitHandler.onPluginLoaded(name, version);
           }
-          // 再调项目 handler（更新 Pinia store 的 wallpaper_settings.ledPlugin）
           if (project?.onPluginLoaded) {
             project.onPluginLoaded(name, version);
           }
@@ -183,8 +43,6 @@ export function createRgbMock(
       };
     }
 
-    // 用 Object.defineProperty 拦截 wallpaperPluginListener 的写入
-    // 确保无论是 dev-kit 先设还是项目后设，两边的 handler 都能被调用
     let _storedListener = createWrappedListener(null);
     Object.defineProperty(w, 'wallpaperPluginListener', {
       get() {
@@ -203,30 +61,20 @@ export function createRgbMock(
 
     w.wpPlugins.led = {
       setAllDevicesByImageData: (imageData: string, width: number, height: number) => {
-        // 解码 imageData
         const pixels: number[] = [];
         for (let i = 0; i < imageData.length; i++) {
           pixels.push(imageData.charCodeAt(i) & 0xff);
         }
 
-        // 提取调色板供面板显示
         const palette = extractPalette(pixels, width, height);
         const frame = { width, height, pixels, palette };
 
-        // 回调通知面板
         if (onRgbFrame) {
           onRgbFrame(frame);
-        }
-
-        // 如果开启了 Razer 硬件转发
-        if (razerEnabled) {
-          forwardToRazer(pixels, width, height);
         }
       },
     };
 
-    // 模拟插件加载延迟 — 通过 Object.defineProperty，项目后续设置的
-    // wallpaperPluginListener 会自动包装，无需额外操作
     setTimeout(() => {
       if (w.wallpaperPluginListener?.onPluginLoaded) {
         w.wallpaperPluginListener.onPluginLoaded('led', '1.0');
@@ -238,7 +86,6 @@ export function createRgbMock(
       }
     }, 500);
 
-    // 额外延迟确保 bundle.js 加载后重新触发（兜底）
     setTimeout(() => {
       const current = w.wallpaperPluginListener;
       if (current?.onPluginLoaded) {
@@ -247,15 +94,7 @@ export function createRgbMock(
       }
     }, 3000);
 
-    // 如果需要真实 Razer 硬件，初始化连接
-    if (razerEnabled) {
-      setTimeout(() => {
-        initRazerChroma();
-      }, 1000);
-    }
-
     state.onDestroy(() => {
-      uninitRazer();
       try {
         delete w.wallpaperPluginListener;
       } catch {}
@@ -264,9 +103,7 @@ export function createRgbMock(
       }
     });
 
-    console.log(
-      `[WE Dev Kit] RGB Mock installed${razerEnabled ? ' (real Razer Chroma enabled)' : ''}`
-    );
+    console.log('[WE Dev Kit] RGB Mock installed');
   }
 
   install();
@@ -274,23 +111,6 @@ export function createRgbMock(
   return {
     get pluginLoaded() {
       return pluginLoaded;
-    },
-    get razerConnected() {
-      return razerConnected;
-    },
-    get razerError() {
-      return razerError;
-    },
-    async setRealRazer(enabled: boolean) {
-      razerEnabled = enabled;
-      if (enabled) {
-        if (!razerInitialized) {
-          await initRazerChroma();
-        }
-      } else {
-        await uninitRazer();
-        razerInitialized = false;
-      }
     },
     reloadPlugin() {
       const w = window as any;
@@ -301,9 +121,6 @@ export function createRgbMock(
   };
 }
 
-/**
- * 从 RGB 像素数组提取简化调色板
- */
 function extractPalette(
   pixels: number[],
   width: number,
@@ -337,11 +154,7 @@ function extractPalette(
       }
 
       if (count > 0) {
-        const hex = rgbToHex(
-          Math.round(r / count),
-          Math.round(g / count),
-          Math.round(b / count)
-        );
+        const hex = rgbToHex(Math.round(r / count), Math.round(g / count), Math.round(b / count));
         const quantized = quantizeHex(hex);
         colorMap.set(quantized, (colorMap.get(quantized) || 0) + 1);
       }
