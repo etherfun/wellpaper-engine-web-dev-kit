@@ -85,6 +85,19 @@ export interface DevKitInstance {
   nextTrack(): void;
   /** 当前模拟状态 */
   state: DevKitState;
+
+  // ---- 子控制器（结构化 API，方便 agent 使用） ----
+
+  /** 设置音频数据传入开关（Task 0） */
+  setAudioEnabled(enabled: boolean): void;
+  /** 媒体集成控制：自定义 track、播放控制等 */
+  media: MediaController;
+  /** RGB 数据获取：原始像素、解码图片、调色板 */
+  rgb: RgbController;
+  /** 生命周期控制：暂停/恢复/FPS */
+  lifecycle: LifecycleController;
+  /** 配置项控制：可见性查询、翻译丢失查询 */
+  properties: PropertiesController;
 }
 
 export interface DevKitState {
@@ -93,9 +106,135 @@ export interface DevKitState {
   currentTrackIndex: number;
   playbackState: PlaybackState;
   isRgbPluginLoaded: boolean;
+  /** 音频数据传入是否启用（Task 0） */
+  isAudioEnabled: boolean;
 }
 
 export type PlaybackState = 'playing' | 'paused' | 'stopped';
+
+// ---- 结构化子控制器（agent 友好 API） ----
+
+/**
+ * 媒体集成控制器
+ * 提供自定义 track、暂停/播放/停止、进度控制等完整媒体控制能力。
+ */
+export interface MediaController {
+  /** 播放 */
+  play(): void;
+  /** 暂停 */
+  pause(): void;
+  /** 停止 */
+  stop(): void;
+  /** 下一首 */
+  nextTrack(): void;
+  /** 上一首 */
+  prevTrack(): void;
+  /** 跳转到指定索引的曲目 */
+  setTrack(index: number): void;
+  /** 覆盖当前曲目的元数据（不切换曲目） */
+  setCustomTrack(track: Partial<MockTrack>): void;
+  /** 设置自定义封面（data URI），自动提取颜色 */
+  setCustomThumbnail(dataUri: string): void;
+  /** 按百分比 (0-100) 跳转到指定位置 */
+  seek(pct: number): void;
+  /** 获取当前播放位置（秒） */
+  getPosition(): number;
+  /** 获取当前曲目信息 */
+  getCurrentTrack(): MockTrack;
+  /** 当前曲目索引 */
+  readonly currentIndex: number;
+  /** 当前播放状态 */
+  readonly playbackState: PlaybackState;
+  /** 曲库列表 */
+  readonly tracks: MockTrack[];
+}
+
+/**
+ * RGB 数据控制器
+ * 获取原始像素数据、解码后的 ImageData、调色板，注册帧回调。
+ */
+export interface RgbController {
+  /** 获取最后一帧的原始数据（含 pixels + palette） */
+  getLastFrame(): RgbFrameData | null;
+  /** 获取最后一帧解码后的 ImageData（可用于 canvas 绘制） */
+  getDecodedImageData(): ImageData | null;
+  /** 获取最后一帧的调色板（最多 8 色 + 占比） */
+  getPalette(): { color: string; ratio: number }[];
+  /** 注册帧回调，返回取消注册函数 */
+  onFrame(callback: RgbFrameCallback): () => void;
+  /** 手动模拟一帧 RGB 数据（不依赖插件） */
+  simulateFrame(width?: number, height?: number, pixelData?: number[]): void;
+}
+
+/**
+ * 生命周期控制器
+ * 模拟 WE 的暂停/恢复/FPS 变化等生命周期操作。
+ */
+export interface LifecycleController {
+  /** 模拟 WE 暂停壁纸 */
+  pause(): void;
+  /** 模拟 WE 恢复壁纸 */
+  resume(): void;
+  /** 模拟 FPS 限制变化 */
+  setFps(fps: number): void;
+  /** 是否处于暂停状态 */
+  readonly isPaused: boolean;
+}
+
+/**
+ * 单个属性的可见性状态
+ */
+export interface PropertyVisibility {
+  /** 属性 key */
+  key: string;
+  /** 当前是否可见 */
+  visible: boolean;
+  /** 条件表达式（原始字符串） */
+  condition: string | null;
+  /** 导致不可见的属性名（如果因条件不满足） */
+  blockedBy?: string;
+  /** 导致不可见的属性的当前值 */
+  blockedValue?: unknown;
+}
+
+/**
+ * 单个属性的翻译丢失状态
+ */
+export interface PropertyTranslationStatus {
+  /** 属性 key */
+  key: string;
+  /** i18n 翻译键 */
+  i18nKey: string;
+  /** 翻译是否丢失（true = 用 key 当 fallback） */
+  missing: boolean;
+  /** 当前显示的名称 */
+  displayName: string;
+}
+
+/**
+ * 配置项控制器
+ * 查询配置项可见性、翻译键丢失状态、获取属性定义列表。
+ */
+export interface PropertiesController {
+  /** 获取单个属性的定义 */
+  getProperty(key: string): ProjectPropertyDef | undefined;
+  /** 获取所有属性的定义列表 */
+  getAllProperties(): ProjectPropertyDef[];
+  /** 查询单个属性的可见性状态 */
+  getVisibility(key: string): PropertyVisibility;
+  /** 查询所有属性的可见性状态 */
+  getAllVisibility(): PropertyVisibility[];
+  /** 检查单个属性的翻译键是否丢失 */
+  checkTranslation(key: string): PropertyTranslationStatus;
+  /** 获取所有翻译丢失的属性 */
+  getMissingTranslations(): PropertyTranslationStatus[];
+  /** 获取当前可见的属性列表 */
+  getVisibleProperties(): ProjectPropertyDef[];
+  /** 获取所有属性的当前值（{ key: value } 格式） */
+  getCurrentValues(): Record<string, unknown>;
+  /** 从 project.json 重新加载属性定义 */
+  reloadProperties(): Promise<void>;
+}
 
 // ---- 内部状态类型（不导出） ----
 
@@ -134,6 +273,7 @@ export interface AudioSimulatorController {
   stop(): void;
   pushFrame(): void;
   setAmplitude(v: number): void;
+  fadeTo(target: number, durationMs?: number): void;
   setBassBoost(v: number): void;
   setVariationSpeed(v: number): void;
   setMode(mode: AudioMode): void;
