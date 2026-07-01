@@ -37,6 +37,10 @@ export function createAudioSimulator(
   let currentBassBoost = bassBoost;
   let currentSpeed = speed;
 
+  // Task 0: 渐进淡出/淡入
+  let _fadeTarget = currentAmplitude;
+  const FADE_FACTOR = 0.12; // 每帧向目标靠近 12%，约 24 帧(800ms) 达到 95%
+
   // 上一帧数据（用于帧间平滑）
   const prevFrame = new Float32Array(128);
   // 相位累加器（正弦波用）
@@ -119,6 +123,14 @@ export function createAudioSimulator(
 
   function tick() {
     if (!running) return;
+
+    // Task 0: 渐进淡出/淡入 — 每帧向目标逼近
+    if (Math.abs(currentAmplitude - _fadeTarget) > 0.001) {
+      currentAmplitude += (_fadeTarget - currentAmplitude) * FADE_FACTOR;
+    } else {
+      currentAmplitude = _fadeTarget;
+    }
+
     const frame = generateFrame();
     callback(frame);
   }
@@ -146,8 +158,13 @@ export function createAudioSimulator(
       console.log('[WE Dev Kit] AudioSimulator stopped');
     },
 
+    /** 渐进淡出/淡入到目标振幅（Task 0） */
+    fadeTo(target: number, _durationMs?: number) {
+      _fadeTarget = Math.max(0, Math.min(1, target));
+    },
     setAmplitude(v: number) {
       currentAmplitude = Math.max(0, Math.min(1, v));
+      _fadeTarget = currentAmplitude; // 即时设置不渐变
     },
     setBassBoost(v: number) {
       currentBassBoost = Math.max(0, Math.min(3, v));
