@@ -1,14 +1,14 @@
 {
-  "name": "@perfectwall/we-dev-kit",
+  "name": "wallpaper-engine-dev-kit",
   "version": "0.1.0",
-  "description": "Wallpaper Engine runtime simulation layer for browser development",
+  "description": "Unofficial Wallpaper Engine runtime simulation layer for browser development",
   "keywords": [
     "wallpaper-engine",
     "dev-kit",
     "mock",
     "development"
   ],
-  "license": "MIT",
+  "license": "GPL-3.0-only",
   "author": "etherfun",
   "type": "module",
   "exports": {
