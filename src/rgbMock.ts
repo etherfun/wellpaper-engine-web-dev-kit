@@ -1,30 +1,66 @@
 /**
  * RGB LED 插件模拟模块
  *
- * 模拟 WE 的 LED / CUE 插件加载机制：
- *   - window.wallpaperPluginListener.onPluginLoaded(name, version)
+ * 模拟 WE 的 LED 数据通道：
  *   - window.wpPlugins.led.setAllDevicesByImageData(imageData, width, height)
+ *
+ * 注意：不再自动模拟插件加载（已移除无法连接的模拟环境），
+ * 项目通过 kit.rgb.simulateFrame() 手动推送帧数据，或等待真实插件加载。
+ *
+ * v2: 增加帧存储、解码 ImageData、回调注册等 agent 友好 API。
  */
 
-import type { InternalState, RgbFrameCallback } from './types';
+import type { InternalState, RgbFrameData, RgbFrameCallback } from './types';
 
 export function createRgbMock(
   state: InternalState,
   onRgbFrame?: RgbFrameCallback
 ) {
-  let pluginLoaded = false;
+  let lastFrame: RgbFrameData | null = null;
+  let lastImageData: ImageData | null = null;
+  const frameCallbacks: Set<RgbFrameCallback> = new Set();
+
+  /** 内部分发帧到所有回调 */
+  function dispatchFrame(frame: RgbFrameData): void {
+    lastFrame = frame;
+    // 同时解码为 ImageData
+    lastImageData = pixelsToImageData(frame.pixels, frame.width, frame.height);
+    // 通知外部回调
+    if (onRgbFrame) onRgbFrame(frame);
+    // 通知注册的帧回调
+    for (const cb of frameCallbacks) {
+      try { cb(frame); } catch (_) {}
+    }
+  }
+
+  /** 手动模拟一帧 */
+  function simulateFrame(width = 100, height = 20, pixelData?: number[]): void {
+    let pixels: number[];
+    if (pixelData) {
+      pixels = pixelData;
+    } else {
+      // 生成随机渐变帧
+      pixels = [];
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const r = Math.floor((x / width) * 200 + Math.random() * 55);
+          const g = Math.floor((y / height) * 200 + Math.random() * 55);
+          const b = Math.floor(((x + y) / (width + height)) * 200 + Math.random() * 55);
+          pixels.push(r, g, b);
+        }
+      }
+    }
+    const palette = extractPalette(pixels, width, height);
+    dispatchFrame({ width, height, pixels, palette });
+  }
 
   function install() {
     const w = window as any;
 
     // ---- wallpaperPluginListener — 保留项目原有的 listener 链 ----
     const devKitHandler = {
-      onPluginLoaded: (name: string, version: string) => {
-        console.log(`[WE Dev Kit] pluginLoaded: ${name} v${version}`);
-        if (name === 'led') {
-          state.isRgbPluginLoaded = true;
-          pluginLoaded = true;
-        }
+      onPluginLoaded: (_name: string, _version: string) => {
+        // 保留 listener 链，不做自动标记
       },
     };
 
@@ -67,32 +103,9 @@ export function createRgbMock(
         }
 
         const palette = extractPalette(pixels, width, height);
-        const frame = { width, height, pixels, palette };
-
-        if (onRgbFrame) {
-          onRgbFrame(frame);
-        }
+        dispatchFrame({ width, height, pixels, palette });
       },
     };
-
-    setTimeout(() => {
-      if (w.wallpaperPluginListener?.onPluginLoaded) {
-        w.wallpaperPluginListener.onPluginLoaded('led', '1.0');
-      }
-    }, 200);
-    setTimeout(() => {
-      if (w.wallpaperPluginListener?.onPluginLoaded) {
-        w.wallpaperPluginListener.onPluginLoaded('cue', '1.0');
-      }
-    }, 500);
-
-    setTimeout(() => {
-      const current = w.wallpaperPluginListener;
-      if (current?.onPluginLoaded) {
-        current.onPluginLoaded('led', '1.0');
-        current.onPluginLoaded('cue', '1.0');
-      }
-    }, 3000);
 
     state.onDestroy(() => {
       try {
@@ -109,16 +122,47 @@ export function createRgbMock(
   install();
 
   return {
-    get pluginLoaded() {
-      return pluginLoaded;
+    /** 获取最后一帧原始数据 */
+    getLastFrame: (): RgbFrameData | null => lastFrame,
+    /** 获取最后一帧解码后的 ImageData */
+    getDecodedImageData: (): ImageData | null => lastImageData,
+    /** 获取调色板 */
+    getPalette: (): { color: string; ratio: number }[] => lastFrame?.palette ?? [],
+    /** 注册帧回调，返回取消注册函数 */
+    onFrame: (cb: RgbFrameCallback): (() => void) => {
+      frameCallbacks.add(cb);
+      return () => { frameCallbacks.delete(cb); };
     },
-    reloadPlugin() {
-      const w = window as any;
-      if (w.wallpaperPluginListener?.onPluginLoaded) {
-        w.wallpaperPluginListener.onPluginLoaded('led', '1.0');
-      }
-    },
+    /** 手动模拟一帧随机数据 */
+    simulateFrame,
   };
+}
+
+/** 将 RGB 像素数组转为 canvas ImageData */
+function pixelsToImageData(
+  pixels: number[],
+  width: number,
+  height: number
+): ImageData | null {
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    const imageData = ctx.createImageData(width, height);
+    for (let i = 0; i < pixels.length / 3; i++) {
+      const pi = i * 3;
+      const di = i * 4;
+      imageData.data[di] = pixels[pi] ?? 0;
+      imageData.data[di + 1] = pixels[pi + 1] ?? 0;
+      imageData.data[di + 2] = pixels[pi + 2] ?? 0;
+      imageData.data[di + 3] = 255;
+    }
+    return imageData;
+  } catch {
+    return null;
+  }
 }
 
 function extractPalette(
