@@ -1,4 +1,4 @@
-# @perfectwall/we-dev-kit API 文档
+# wallpaper-engine-web-dev-kit API 文档
 
 > 版本: 0.1.0 (v2)
 

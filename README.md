@@ -1,10 +1,10 @@
-# wallpaper-engine-dev-kit
+# wallpaper-engine-web-dev-kit
 
-非官方 Wallpaper Engine 运行时模拟层 — 在浏览器中完整模拟 WE 注入的 API 行为。
+非官方 Wallpaper Engine **网页壁纸** 运行时模拟层 — 在浏览器中完整模拟 WE 注入的 API 行为。
 
 ## 用途
 
-在浏览器开发 Wallpaper Engine 壁纸时，无需在 WE 编辑器中反复加载壁纸即可：
+在浏览器开发 Wallpaper Engine 网页壁纸时，无需在 WE 编辑器中反复加载壁纸即可：
 
 - 查看属性配置面板
 - 调试音频可视化（模拟 128 元素频谱）
@@ -33,11 +33,11 @@
 ### 模块导入（npm / TypeScript 项目）
 
 ```bash
-npm install wallpaper-engine-dev-kit
+npm install wallpaper-engine-web-dev-kit
 ```
 
 ```typescript
-import { createWeDevKit } from 'wallpaper-engine-dev-kit';
+import { createWeDevKit } from 'wallpaper-engine-web-dev-kit';
 
 const kit = createWeDevKit({
   panel: { position: { x: 100, y: 50 } },

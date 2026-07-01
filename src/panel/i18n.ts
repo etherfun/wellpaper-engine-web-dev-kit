@@ -1,5 +1,5 @@
 /**
- * @perfectwall/we-dev-kit — Panel 国际化字典
+ * wallpaper-engine-web-dev-kit — Panel 国际化字典
  *
  * 支持 en-US / zh-CN，基于 navigator.language 自动选择。
  */

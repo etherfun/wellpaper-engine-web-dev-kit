@@ -1,11 +1,11 @@
 /**
- * @perfectwall/we-dev-kit — 主入口
+ * wallpaper-engine-web-dev-kit — 主入口
  *
  * 提供 createWeDevKit() 工厂函数，一键启动所有 WE 运行时模拟。
  * v2: 新增结构化子控制器（media / rgb / lifecycle / properties）
  *
  * 使用方式:
- *   import { createWeDevKit } from '@perfectwall/we-dev-kit';
+ *   import { createWeDevKit } from 'wallpaper-engine-web-dev-kit';
  *   const kit = createWeDevKit({ panel: true, audio: true, media: true });
  *   kit.media.play();
  *   kit.rgb.getLastFrame();
