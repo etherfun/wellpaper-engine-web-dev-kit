@@ -17,6 +17,7 @@ import type {
 } from '../types';
 import { loadProjectProperties } from './projectJsonReader';
 import { renderPanel } from './renderer';
+import { resolvePanelMessages } from './i18n';
 
 interface PanelDeps {
   config: DevKitConfig;
@@ -28,10 +29,12 @@ interface PanelDeps {
     simulateResume: () => void;
     simulateFpsChange: (fps: number) => void;
   };
+  /** Task 0: 音频数据传入开关 */
+  setAudioEnabled?: (enabled: boolean) => void;
 }
 
 export function createPanel(deps: PanelDeps) {
-  const { config, state, audioSimulator, mediaMock, lifecycleMock } = deps;
+  const { config, state, audioSimulator, mediaMock, lifecycleMock, setAudioEnabled } = deps;
   let panelController: PanelUIController | null = null;
   let isVisible = false;
   let props: ProjectPropertyDef[] = [];
@@ -89,8 +92,11 @@ export function createPanel(deps: PanelDeps) {
         onMediaCustomTrack: (track: Partial<MockTrack>) => mediaMock?.setCustomTrack(track),
         onMediaThumbnail: (dataUri) => mediaMock?.setCustomThumbnail(dataUri),
         onMediaSeek: (pct) => mediaMock?.seek(pct),
-        onLifecyclePause: () => lifecycleMock?.simulatePause(),
-        onLifecycleResume: () => lifecycleMock?.simulateResume(),
+        onAudioToggle: (enabled) => setAudioEnabled?.(enabled),
+        onLifecycleToggle: (paused: boolean) => {
+          if (paused) lifecycleMock?.simulatePause();
+          else lifecycleMock?.simulateResume();
+        },
         onLifecycleFps: (fps) => lifecycleMock?.simulateFpsChange(fps),
         onClose: () => hide(),
         onMinimize: () => hide(),
@@ -117,7 +123,8 @@ export function createPanel(deps: PanelDeps) {
           }
         }
         appliedLanguage = newLang;
-      }
+      },
+      resolvePanelMessages()
     );
 
     // 媒体刷新定时器

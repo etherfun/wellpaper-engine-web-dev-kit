@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 控制面板 DOM 渲染器
  *
  * 纯原生 DOM 构建完整面板 UI，零依赖。
@@ -16,6 +16,8 @@ import type {
 } from '../types';
 import { PANEL_STYLES } from './styles';
 import { evaluateAllConditions, type VisibilityMap } from './conditionEvaluator';
+import { resolvePanelMessages, setPanelMessages, getPanelMessages } from './i18n';
+import type { PanelMessages } from './i18n';
 
 // ---- 颜色常量 ----
 const RGB_HEX = /^#?([0-9a-fA-F]{3,6})$/;
@@ -29,6 +31,7 @@ export function renderPanel(
   },
   callbacks: {
     onPropertyChange: (key: string, value: unknown) => void;
+    onAudioToggle: (enabled: boolean) => void;
     onAudioAmplitude: (v: number) => void;
     onAudioBassBoost: (v: number) => void;
     onAudioSpeed: (v: number) => void;
@@ -42,8 +45,7 @@ export function renderPanel(
     onMediaCustomTrack: (track: Partial<MockTrack>) => void;
     onMediaThumbnail: (dataUri: string) => void;
     onMediaSeek: (pct: number) => void;
-    onLifecyclePause: () => void;
-    onLifecycleResume: () => void;
+    onLifecycleToggle: (paused: boolean) => void;
     onLifecycleFps: (fps: number) => void;
     onClose: () => void;
     onMinimize: () => void;
@@ -51,8 +53,10 @@ export function renderPanel(
   initialProps: ProjectPropertyDef[] = [],
   appliedLanguage: string = 'en-us',
   availableLanguages: string[] = [],
-  onLanguageSwitch?: (lang: string) => void
+  onLanguageSwitch?: (lang: string) => void,
+  messages?: PanelMessages
 ) {
+  setPanelMessages(messages ?? resolvePanelMessages());
   // ---- 创建 Shadow DOM 容器（隔离宿主页面 CSS 污染） ----
   const host = document.createElement('div');
   host.style.cssText = 'all:initial;position:fixed;z-index:2147483647;top:0;left:0;width:0;height:0;';
@@ -73,7 +77,7 @@ export function renderPanel(
 
   const title = document.createElement('span');
   title.className = 'panel-title';
-  title.textContent = 'WE Dev Kit';
+  title.textContent = getPanelMessages().title;
   header.appendChild(title);
 
   const clock = document.createElement('span');
@@ -83,13 +87,13 @@ export function renderPanel(
   const minimizeBtn = document.createElement('button');
   minimizeBtn.className = 'panel-btn';
   minimizeBtn.textContent = '—';
-  minimizeBtn.title = '最小化';
+  minimizeBtn.title = getPanelMessages().minimize;
   header.appendChild(minimizeBtn);
 
   const closeBtn = document.createElement('button');
   closeBtn.className = 'panel-btn';
   closeBtn.textContent = '×';
-  closeBtn.title = '关闭';
+  closeBtn.title = getPanelMessages().close;
   header.appendChild(closeBtn);
 
   panel.appendChild(header);
@@ -136,24 +140,24 @@ export function renderPanel(
   } = {} as any;
 
   // Audio Section
-  sections.audio = createSection(body, '▶ Audio Simulator', 'audio-content', true, '');
+  sections.audio = createSection(body, getPanelMessages().sectionAudio, 'audio-content', true, '');
   populateAudioSection(sections.audio, controllers.audio, callbacks);
 
   // Media Section
-  sections.media = createSection(body, '▶ Media Integration', 'media-content', true, '');
+  sections.media = createSection(body, getPanelMessages().sectionMedia, 'media-content', true, '');
   populateMediaSection(sections.media, controllers.media, callbacks);
 
   // RGB Section
-  sections.rgb = createSection(body, '▶ RGB LED', 'rgb-content', true, '');
+  sections.rgb = createSection(body, getPanelMessages().sectionRgb, 'rgb-content', true, '');
   populateRgbSection(sections.rgb, callbacks);
 
   // Lifecycle Section
-  sections.lifecycle = createSection(body, '▶ Lifecycle', 'lifecycle-content', true, '');
+  sections.lifecycle = createSection(body, getPanelMessages().sectionLifecycle, 'lifecycle-content', true, '');
   populateLifecycleSection(sections.lifecycle, callbacks);
 
   // Properties Section (从 project.json 加载)
-  const propBadge = `${initialProps.length} items`;
-  sections.properties = createSection(body, '▶ Properties', 'properties-content', true, propBadge);
+  const propBadge = `${initialProps.length} ${getPanelMessages().items}`;
+  sections.properties = createSection(body, getPanelMessages().sectionProperties, 'properties-content', true, propBadge);
   populatePropertiesSection(sections.properties, initialProps, callbacks, appliedLanguage, availableLanguages, onLanguageSwitch);
 
   // ---- 注入样式到 Shadow DOM（完全隔离宿主 CSS） ----
@@ -268,21 +272,41 @@ function populateAudioSection(
   audio: AudioSimulatorController | undefined,
   cb: any
 ) {
-  createSlider(container, 'Amplitude', 0, 1, 0.01, 0.6, cb.onAudioAmplitude);
-  createSlider(container, 'Bass Boost', 0, 3, 0.1, 1.2, cb.onAudioBassBoost);
-  createSlider(container, 'Speed', 0.1, 5, 0.1, 1.0, cb.onAudioSpeed);
+  // Audio Input 开关
+  let audioEnabled = true;
+  const toggleRow = document.createElement('div');
+  toggleRow.className = 'row';
+  const toggleLabel = document.createElement('label');
+  toggleLabel.textContent = getPanelMessages().audioInput;
+  toggleRow.appendChild(toggleLabel);
+  const toggleBtn = document.createElement('button');
+  toggleBtn.className = 'toggle-btn on';
+  toggleBtn.textContent = 'ON';
+  toggleBtn.addEventListener('click', () => {
+    audioEnabled = !audioEnabled;
+    toggleBtn.className = 'toggle-btn ' + (audioEnabled ? 'on' : 'off');
+    toggleBtn.textContent = audioEnabled ? 'ON' : 'OFF';
+    toggleBtn.style.borderColor = audioEnabled ? '#4CAF50' : '#e53935';
+    cb.onAudioToggle(audioEnabled);
+  });
+  toggleRow.appendChild(toggleBtn);
+  container.appendChild(toggleRow);
+
+  createSlider(container, getPanelMessages().amplitude, 0, 1, 0.01, 0.6, cb.onAudioAmplitude);
+  createSlider(container, getPanelMessages().bassBoost, 0, 3, 0.1, 1.2, cb.onAudioBassBoost);
+  createSlider(container, getPanelMessages().speed, 0.1, 5, 0.1, 1.0, cb.onAudioSpeed);
 
   const modeRow = document.createElement('div');
   modeRow.className = 'row';
   const modeLabel = document.createElement('label');
-  modeLabel.textContent = 'Mode';
+  modeLabel.textContent = getPanelMessages().mode;
   modeRow.appendChild(modeLabel);
 
   const modeSelect = document.createElement('select');
   ['mixed', 'beats', 'melody'].forEach((m) => {
     const opt = document.createElement('option');
     opt.value = m;
-    opt.textContent = m.charAt(0).toUpperCase() + m.slice(1);
+    opt.textContent = m === 'mixed' ? getPanelMessages().mixed : m === 'beats' ? getPanelMessages().beats : getPanelMessages().melody;
     if (m === 'mixed') opt.selected = true;
     modeSelect.appendChild(opt);
   });
@@ -305,11 +329,11 @@ function populateMediaSection(
   btnRow.className = 'btn-group';
   btnRow.style.marginBottom = '8px';
 
-  const btnPrev = createButton('⏮', 'Previous track', () => cb.onMediaPrev());
-  const btnPlay = createButton('▶', 'Play', () => cb.onMediaPlay(), 'primary');
-  const btnPause = createButton('⏸', 'Pause', () => cb.onMediaPause());
-  const btnStop = createButton('⏹', 'Stop', () => cb.onMediaStop(), 'danger');
-  const btnNext = createButton('⏭', 'Next track', () => cb.onMediaNext());
+  const btnPrev = createButton('⏮', getPanelMessages().previousTrack, () => cb.onMediaPrev());
+  const btnPlay = createButton('▶', getPanelMessages().play, () => cb.onMediaPlay(), 'primary');
+  const btnPause = createButton('⏸', getPanelMessages().pause, () => cb.onMediaPause());
+  const btnStop = createButton('⏹', getPanelMessages().stop, () => cb.onMediaStop(), 'danger');
+  const btnNext = createButton('⏭', getPanelMessages().nextTrack, () => cb.onMediaNext());
 
   btnRow.appendChild(btnPrev);
   btnRow.appendChild(btnPlay);
@@ -322,7 +346,7 @@ function populateMediaSection(
   const trackRow = document.createElement('div');
   trackRow.className = 'row';
   const trackLabel = document.createElement('label');
-  trackLabel.textContent = 'Track';
+  trackLabel.textContent = getPanelMessages().track;
   trackRow.appendChild(trackLabel);
 
   const trackSelect = document.createElement('select');
@@ -348,7 +372,7 @@ function populateMediaSection(
 
   const thumbnail = document.createElement('img');
   thumbnail.className = 'thumbnail-preview';
-  thumbnail.alt = 'cover';
+  thumbnail.alt = getPanelMessages().coverAlt;
   editRow.appendChild(thumbnail);
 
   const fieldsCol = document.createElement('div');
@@ -357,9 +381,9 @@ function populateMediaSection(
   fieldsCol.style.flexDirection = 'column';
   fieldsCol.style.gap = '4px';
 
-  const titleInput = createTextField('Title', '');
-  const artistInput = createTextField('Artist', '');
-  const albumInput = createTextField('Album', '');
+  const titleInput = createTextField(getPanelMessages().title_, '');
+  const artistInput = createTextField(getPanelMessages().artist, '');
+  const albumInput = createTextField(getPanelMessages().album, '');
 
   fieldsCol.appendChild(titleInput);
   fieldsCol.appendChild(artistInput);
@@ -382,7 +406,7 @@ function populateMediaSection(
   // 封面上传
   const uploadZone = document.createElement('div');
   uploadZone.className = 'thumbnail-upload-zone';
-  uploadZone.textContent = '点击选择封面 或 拖拽图片到此处';
+  uploadZone.textContent = getPanelMessages().uploadCover;
 
   const fileInput = document.createElement('input');
   fileInput.type = 'file';
@@ -495,25 +519,13 @@ function populateMediaSection(
 // ---- RGB Section ----
 
 function populateRgbSection(container: HTMLElement, cb?: any) {
-  // 插件状态行
-  const statusRow = document.createElement('div');
-  statusRow.className = 'row';
-  const statusLabel = document.createElement('label');
-  statusLabel.textContent = 'LED Plugin';
-  statusRow.appendChild(statusLabel);
-  const statusEl = document.createElement('span');
-  statusEl.id = 'rgb-status';
-  statusEl.textContent = '⏳ loading...';
-  statusRow.appendChild(statusEl);
-  container.appendChild(statusRow);
-
   // RGB 帧预览 canvas
   const canvasRow = document.createElement('div');
   canvasRow.style.cssText = 'margin: 4px 0; display: flex; flex-direction: column; gap: 4px;';
 
   const infoLine = document.createElement('div');
   infoLine.style.cssText = 'font-size: 10px; color: #666;';
-  infoLine.textContent = '等待 RGB 数据…';
+  infoLine.textContent = getPanelMessages().waitingRgb;
   canvasRow.appendChild(infoLine);
 
   const canvas = document.createElement('canvas');
@@ -561,23 +573,56 @@ function populateRgbSection(container: HTMLElement, cb?: any) {
 // ---- Lifecycle Section ----
 
 function populateLifecycleSection(container: HTMLElement, cb: any) {
-  const btnRow = document.createElement('div');
-  btnRow.className = 'btn-group';
-  btnRow.appendChild(createButton('⏸ Pause', 'Simulate WE pause', () => cb.onLifecyclePause()));
-  btnRow.appendChild(createButton('▶ Resume', 'Simulate WE resume', () => cb.onLifecycleResume()));
-  container.appendChild(btnRow);
+  // 暂停状态指示 + 单个切换按钮
+  let lifecyclePaused = false;
+  const statusRow = document.createElement('div');
+  statusRow.className = 'row';
+  const statusLabel = document.createElement('label');
+  statusLabel.textContent = getPanelMessages().paused;
+  statusRow.appendChild(statusLabel);
+  const statusEl = document.createElement('span');
+  statusEl.id = '__we_lifecycle_status';
+  statusEl.textContent = getPanelMessages().running;
+  statusEl.style.fontSize = '11px';
+  statusEl.style.color = '#4CAF50';
+  statusRow.appendChild(statusEl);
+  container.appendChild(statusRow);
+
+  const toggleBtn = document.createElement('button');
+  toggleBtn.className = 'toggle-btn on';
+  toggleBtn.textContent = getPanelMessages().pauseBtn;
+  toggleBtn.style.width = '100%';
+  toggleBtn.style.padding = '4px 12px';
+  toggleBtn.addEventListener('click', () => {
+    lifecyclePaused = !lifecyclePaused;
+    cb.onLifecycleToggle(lifecyclePaused);
+    if (lifecyclePaused) {
+      toggleBtn.className = 'toggle-btn off';
+      toggleBtn.textContent = getPanelMessages().resumeBtn;
+      toggleBtn.style.borderColor = '#FFC107';
+      statusEl.textContent = getPanelMessages().paused;
+      statusEl.style.color = '#FFC107';
+    } else {
+      toggleBtn.className = 'toggle-btn on';
+      toggleBtn.textContent = getPanelMessages().pauseBtn;
+      toggleBtn.style.borderColor = '';
+      statusEl.textContent = getPanelMessages().running;
+      statusEl.style.color = '#4CAF50';
+    }
+  });
+  container.appendChild(toggleBtn);
 
   const fpsRow = document.createElement('div');
   fpsRow.className = 'row';
   const fpsLabel = document.createElement('label');
-  fpsLabel.textContent = 'FPS Limit';
+  fpsLabel.textContent = getPanelMessages().fpsLimit;
   fpsRow.appendChild(fpsLabel);
 
   const fpsSelect = document.createElement('select');
   [0, 30, 60, 120, 144].forEach((fps) => {
     const opt = document.createElement('option');
     opt.value = String(fps);
-    opt.textContent = fps === 0 ? 'Unlimited' : `${fps} FPS`;
+    opt.textContent = fps === 0 ? getPanelMessages().unlimited : `${fps} FPS`;
     if (fps === 60) opt.selected = true;
     fpsSelect.appendChild(opt);
   });
@@ -635,11 +680,11 @@ function populatePropertiesSection(
   const toggleBtn = document.createElement('button');
   toggleBtn.className = 'btn';
   toggleBtn.style.cssText = 'margin-left:auto;font-size:10px;padding:2px 8px;';
-  toggleBtn.textContent = '显示键名';
-  toggleBtn.title = '切换显示属性键名 / 翻译名称';
+  toggleBtn.textContent = getPanelMessages().showKeys;
+  toggleBtn.title = getPanelMessages().showKeys + ' / ' + getPanelMessages().showName;
   toggleBtn.addEventListener('click', () => {
     showKeys = !showKeys;
-    toggleBtn.textContent = showKeys ? '显示名称' : '显示键名';
+    toggleBtn.textContent = showKeys ? getPanelMessages().showName : getPanelMessages().showKeys;
     toggleBtn.classList.toggle('active', showKeys);
     renderProps(searchInput.value, visSelect.value as 'all' | 'visible' | 'hidden');
   });
@@ -650,7 +695,7 @@ function populatePropertiesSection(
   const searchInput = document.createElement('input');
   searchInput.className = 'prop-search';
   searchInput.type = 'text';
-  searchInput.placeholder = 'Search properties...';
+  searchInput.placeholder = getPanelMessages().searchPlaceholder;
   container.appendChild(searchInput);
 
   // 可见性过滤行
@@ -658,13 +703,24 @@ function populatePropertiesSection(
   filterRow.className = 'visibility-filter-row';
 
   const visSelect = document.createElement('select');
-  const visAll = document.createElement('option'); visAll.value = 'all'; visAll.textContent = '全部'; visAll.selected = true;
-  const visVisible = document.createElement('option'); visVisible.value = 'visible'; visVisible.textContent = '可见';
-  const visHidden = document.createElement('option'); visHidden.value = 'hidden'; visHidden.textContent = '隐藏';
+  const visAll = document.createElement('option'); visAll.value = 'all'; visAll.textContent = getPanelMessages().filterAll; visAll.selected = true;
+  const visVisible = document.createElement('option'); visVisible.value = 'visible'; visVisible.textContent = getPanelMessages().filterVisible;
+  const visHidden = document.createElement('option'); visHidden.value = 'hidden'; visHidden.textContent = getPanelMessages().filterHidden;
   visSelect.appendChild(visAll);
   visSelect.appendChild(visVisible);
   visSelect.appendChild(visHidden);
   filterRow.appendChild(visSelect);
+
+  // 翻译丢失过滤
+  const missingTransSelect = document.createElement('select');
+  missingTransSelect.style.marginLeft = '4px';
+  const mtAll = document.createElement('option'); mtAll.value = 'all'; mtAll.textContent = getPanelMessages().translationAll; mtAll.selected = true;
+  const mtMissing = document.createElement('option'); mtMissing.value = 'missing'; mtMissing.textContent = getPanelMessages().translationMissing;
+  const mtOk = document.createElement('option'); mtOk.value = 'ok'; mtOk.textContent = getPanelMessages().translationOk;
+  missingTransSelect.appendChild(mtAll);
+  missingTransSelect.appendChild(mtMissing);
+  missingTransSelect.appendChild(mtOk);
+  filterRow.appendChild(missingTransSelect);
 
   const visStats = document.createElement('span');
   visStats.className = 'vis-stats';
@@ -678,7 +734,11 @@ function populatePropertiesSection(
 
   // 可见性筛选变更
   visSelect.addEventListener('change', () => {
-    renderProps(searchInput.value, visSelect.value as 'all' | 'visible' | 'hidden');
+    renderProps(searchInput.value, visSelect.value as 'all' | 'visible' | 'hidden', missingTransSelect.value as 'all' | 'missing' | 'ok');
+  });
+
+  missingTransSelect.addEventListener('change', () => {
+    renderProps(searchInput.value, visSelect.value as 'all' | 'visible' | 'hidden', missingTransSelect.value as 'all' | 'missing' | 'ok');
   });
 
   // ---- 可见性求值 ----
@@ -711,7 +771,7 @@ function populatePropertiesSection(
   }
 
   // ---- 渲染函数 ----
-  function renderProps(filter: string = '', visFilter: string = 'all') {
+  function renderProps(filter: string = '', visFilter: string = 'all', mtFilter: string = 'all') {
     listEl.innerHTML = '';
     const lowerFilter = filter.toLowerCase();
 
@@ -728,7 +788,7 @@ function populatePropertiesSection(
       if (isVis) visibleCount++;
       else hiddenCount++;
     }
-    visStats.textContent = `${visibleCount}可见 / ${hiddenCount}隐藏`;
+    visStats.textContent = `${visibleCount}${getPanelMessages().visibleStat} / ${hiddenCount}${getPanelMessages().hiddenStat}`;
 
     let currentGroup = '';
 
@@ -742,6 +802,10 @@ function populatePropertiesSection(
       const isVis = visibilityMap[prop.key] !== false;
       if (visFilter === 'visible' && !isVis) continue;
       if (visFilter === 'hidden' && isVis) continue;
+
+      // 翻译丢失过滤
+      if (mtFilter === 'missing' && !prop.missingTranslation) continue;
+      if (mtFilter === 'ok' && prop.missingTranslation) continue;
 
       // group 类型渲染为分组标题
       if (prop.type === 'group') {
@@ -758,21 +822,21 @@ function populatePropertiesSection(
       row.className = 'prop-row' + (isVis ? '' : ' is-hidden');
       row.style.position = 'relative';
 
-      // 可见性指示器圆点
+      // 可见性指示器圆点 — 由 CSS class 控制样式
       const visDot = document.createElement('span');
-      visDot.className = 'visibility-dot ' + (prop.condition ? (isVis ? 'visible' : 'hidden') : 'no-condition');
-      visDot.title = prop.condition
-        ? (isVis ? '条件满足，用户可见' : '条件未满足，用户隐藏')
-        : '无条件限制';
-      visDot.textContent = prop.condition ? (isVis ? '✓' : 'x') : '';
-      // 强制 inline 样式确保可见性（防御宿主 CSS 污染）
-      if (prop.condition && !isVis) {
-        visDot.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;margin-right:4px;flex-shrink:0;cursor:help;background-color:#E53935;color:#fff;border:1px solid #E53935;font-size:11px;font-weight:bold;';
-      } else if (prop.condition && isVis) {
-        visDot.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;margin-right:4px;flex-shrink:0;cursor:help;background-color:#4CAF50;color:#fff;border:1px solid #4CAF50;font-size:10px;font-weight:bold;';
+      if (prop.condition && isVis) {
+        visDot.className = 'visibility-dot visible';
+        visDot.textContent = '✓';
+      } else if (prop.condition && !isVis) {
+        visDot.className = 'visibility-dot hidden';
+        visDot.textContent = 'x';
       } else {
-        visDot.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;margin-right:4px;flex-shrink:0;cursor:help;background-color:#4CAF50;border:1px solid #4CAF50;color:transparent;font-size:0;';
+        visDot.className = 'visibility-dot no-condition';
+        visDot.textContent = '';
       }
+      visDot.title = prop.condition
+        ? (isVis ? getPanelMessages().conditionMet : getPanelMessages().conditionNotMet)
+        : getPanelMessages().noCondition;
       row.appendChild(visDot);
 
       // condition tooltip
@@ -786,10 +850,14 @@ function populatePropertiesSection(
       // 遗漏翻译提示
       if (prop.missingTranslation) {
         const warnDot = document.createElement('span');
-        warnDot.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:rgba(255,152,0,0.2);color:#FF9800;font-size:9px;font-weight:bold;cursor:help;flex-shrink:0;margin-right:2px;border:1px solid rgba(255,152,0,0.25);';
+        warnDot.className = 'translation-warn';
         warnDot.textContent = '!';
-        warnDot.title = `缺失翻译: "${prop.text}" → 回退到键名`;
+        warnDot.title = getPanelMessages().missingTransTitle.replace('{key}', prop.text ?? prop.key);
         row.appendChild(warnDot);
+      } else {
+        const spacer = document.createElement('span');
+        spacer.className = 'translation-spacer';
+        row.appendChild(spacer);
       }
 
       const keyEl = document.createElement('span');
@@ -957,22 +1025,22 @@ function populatePropertiesSection(
 
   // 刷新可见性（属性值变更后调用）
   function refreshVisibility() {
-    renderProps(searchInput.value, visSelect.value as 'all' | 'visible' | 'hidden');
+    renderProps(searchInput.value, visSelect.value as 'all' | 'visible' | 'hidden', missingTransSelect.value as 'all' | 'missing' | 'ok');
   }
 
   // 搜索
   let searchTimer: ReturnType<typeof setTimeout> | null = null;
   searchInput.addEventListener('input', () => {
     if (searchTimer) clearTimeout(searchTimer);
-    searchTimer = setTimeout(() => renderProps(searchInput.value, visSelect.value as 'all' | 'visible' | 'hidden'), 200);
+    searchTimer = setTimeout(() => renderProps(searchInput.value, visSelect.value as 'all' | 'visible' | 'hidden', missingTransSelect.value as 'all' | 'missing' | 'ok'), 200);
   });
 
-  renderProps();
+  renderProps('', 'all', 'all');
 
   // 刷新属性值
   (container as any).__refreshProperties = function (newProps: ProjectPropertyDef[]) {
     // 重新渲染保持搜索状态
-    renderProps(searchInput.value, visSelect.value as 'all' | 'visible' | 'hidden');
+    renderProps(searchInput.value, visSelect.value as 'all' | 'visible' | 'hidden', missingTransSelect.value as 'all' | 'missing' | 'ok');
   };
 }
 

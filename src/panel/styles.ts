@@ -31,6 +31,7 @@ export const PANEL_STYLES = `
 #__we_devkit_panel .panel-header {
   display: flex;
   align-items: center;
+  gap: 8px;
   padding: 8px 12px;
   background: rgba(0, 0, 0, 0.3);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
@@ -41,7 +42,6 @@ export const PANEL_STYLES = `
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  margin-right: 8px;
   flex-shrink: 0;
 }
 #__we_devkit_panel .panel-header .status-dot.we-real {
@@ -55,21 +55,46 @@ export const PANEL_STYLES = `
 #__we_devkit_panel .panel-header .status-label {
   font-size: 11px;
   color: #aaa;
-  margin-right: auto;
 }
 #__we_devkit_panel .panel-header .panel-title {
   font-size: 12px;
   font-weight: 600;
   color: #ccc;
-  margin-right: auto;
   letter-spacing: 0.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 #__we_devkit_panel .panel-header .panel-clock {
   font-size: 11px;
   color: #888;
   font-family: monospace;
-  margin-right: 12px;
+  white-space: nowrap;
+  margin-left: auto;
 }
+/* ---- 开关按钮（Audio toggle） ---- */
+#__we_devkit_panel .toggle-btn {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid #4CAF50;
+  color: #e0e0e0;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 12px;
+  border-radius: 4px;
+  min-width: 48px;
+  text-align: center;
+  letter-spacing: 0.5px;
+}
+#__we_devkit_panel .toggle-btn:hover {
+  background: rgba(255,255,255,0.12);
+}
+#__we_devkit_panel .toggle-btn.off {
+  border-color: #e53935;
+  opacity: 0.7;
+}
+
 #__we_devkit_panel .panel-header .panel-btn {
   background: none;
   border: none;
@@ -83,6 +108,25 @@ export const PANEL_STYLES = `
 #__we_devkit_panel .panel-header .panel-btn:hover {
   color: #fff;
   background: rgba(255,255,255,0.1);
+}
+
+/* ---- 最小化状态（仅显示标题栏） ---- */
+#__we_devkit_panel.minimized .panel-body {
+  display: none;
+}
+#__we_devkit_panel.minimized {
+  width: auto;
+  min-width: 200px;
+  max-height: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+#__we_devkit_panel.minimized .panel-header {
+  border-bottom: none;
+  cursor: pointer;
+}
+#__we_devkit_panel.minimized .panel-header:hover {
+  background: rgba(255, 255, 255, 0.08);
 }
 
 /* ---- 滚动内容区 ---- */
@@ -341,30 +385,53 @@ export const PANEL_STYLES = `
   margin: 4px 0;
 }
 #__we_devkit_panel .prop-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 20px 14px 1fr 1.2fr;
   align-items: center;
+  gap: 4px;
   padding: 3px 0;
-  gap: 8px;
+  min-height: 22px;
 }
 #__we_devkit_panel .prop-row .prop-key {
   font-size: 11px;
   color: #aaa;
-  flex: 0 0 110px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 #__we_devkit_panel .prop-row .prop-control {
-  flex: 1;
+  min-width: 0;
 }
 #__we_devkit_panel .prop-row .prop-control input[type="range"] {
   width: 100%;
+  box-sizing: border-box;
 }
 #__we_devkit_panel .prop-row .prop-control input[type="text"] {
   width: 100%;
+  box-sizing: border-box;
 }
 #__we_devkit_panel .prop-row .prop-control select {
   width: 100%;
+  box-sizing: border-box;
+}
+#__we_devkit_panel .prop-row .prop-control input[type="checkbox"] {
+  margin: 0;
+}
+#__we_devkit_panel .prop-row .prop-control input[type="color"] {
+  width: 100%;
+  box-sizing: border-box;
+  height: 22px;
+}
+/* slider 的内联 flex 容器占满列宽 */
+#__we_devkit_panel .prop-row .prop-control > div {
+  width: 100%;
+}
+/* color 控件后的 hex 标签 */
+#__we_devkit_panel .prop-row .prop-control .color-hex {
+  font-size: 10px;
+  color: #888;
+  margin-left: auto;
+  white-space: nowrap;
 }
 #__we_devkit_panel .prop-search {
   width: 100%;
@@ -410,16 +477,35 @@ export const PANEL_STYLES = `
   font-size: 10px;
   font-weight: bold;
 }
-  font-size: 10px;
-  font-weight: bold;
-}
-/* 有条件但不满足：红色背景 + 白色 x 确保绝对可见 */
+/* 有条件但不满足：红色背景 + 白色 x */
 #__we_devkit_panel .visibility-dot.hidden {
-  background-color: #E53935 !important;
-  color: #fff !important;
-  border: 1px solid #E53935 !important;
+  background: #E53935;
+  border: 1px solid #E53935;
+  color: #fff;
   font-size: 11px;
   font-weight: bold;
+}
+
+/* 翻译丢失警告标记 */
+#__we_devkit_panel .translation-warn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgba(255,152,0,0.2);
+  color: #FF9800;
+  font-size: 9px;
+  font-weight: bold;
+  cursor: help;
+  border: 1px solid rgba(255,152,0,0.25);
+}
+/* 翻译正常时的占位空元素 — 保持 grid 列对齐 */
+#__we_devkit_panel .translation-spacer {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
 }
 
 /* 可见性过滤下拉 */
