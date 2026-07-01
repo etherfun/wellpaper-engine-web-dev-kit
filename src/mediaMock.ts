@@ -442,6 +442,7 @@ export function createMediaMock(
     secondaryColor: string;
     tertiaryColor: string;
     textColor: string;
+    highContrastColor: string;
   } | null> {
     try {
       const img = new Image();
@@ -491,6 +492,7 @@ export function createMediaMock(
           secondaryColor: colors[1]!,
           tertiaryColor: colors[2]!,
           textColor: luminance(colors[0]!) > 128 ? '#1A1A1A' : '#FFFFFF',
+          highContrastColor: '#FFFFFF',
         };
       }
       return null;
