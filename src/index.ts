@@ -2,10 +2,15 @@
  * @perfectwall/we-dev-kit — 主入口
  *
  * 提供 createWeDevKit() 工厂函数，一键启动所有 WE 运行时模拟。
+ * v2: 新增结构化子控制器（media / rgb / lifecycle / properties）
  *
  * 使用方式:
  *   import { createWeDevKit } from '@perfectwall/we-dev-kit';
  *   const kit = createWeDevKit({ panel: true, audio: true, media: true });
+ *   kit.media.play();
+ *   kit.rgb.getLastFrame();
+ *   kit.lifecycle.pause();
+ *   kit.properties.getVisibility('some_key');
  *
  * 或通过 IIFE:
  *   WeDevKit.createWeDevKit({ panel: true });
@@ -18,6 +23,11 @@ import { createMediaMock } from './mediaMock';
 import { createPanel } from './panel/index';
 import { installPropertyMock } from './propertyMock';
 import { createRgbMock } from './rgbMock';
+import {
+  loadProjectProperties,
+  type LoadResult,
+} from './panel/projectJsonReader';
+import { evaluateAllConditions } from './panel/conditionEvaluator';
 import type {
   AudioConfig,
   AudioSimulatorController,
@@ -25,15 +35,23 @@ import type {
   DevKitInstance,
   DevKitState,
   InternalState,
+  LifecycleController,
   MediaConfig,
+  MediaController,
   MediaMockController,
   MockTrack,
   PanelConfig,
+  PropertiesController,
+  PropertyTranslationStatus,
+  PropertyVisibility,
+  ProjectPropertyDef,
   RequiredConfig,
   ResolvedAudioConfig,
   ResolvedMediaConfig,
   ResolvedPanelConfig,
+  RgbController,
   RgbFrameData,
+  RgbFrameCallback,
 } from './types';
 
 // ---- 默认配置 ----
@@ -154,17 +172,53 @@ function createNoopInstance(config: DevKitConfig): DevKitInstance {
     currentTrackIndex: 0,
     playbackState: 'stopped',
     isRgbPluginLoaded: false,
+    isAudioEnabled: true,
+  };
+  const noopMedia: MediaController = {
+    play() {}, pause() {}, stop() {},
+    nextTrack() {}, prevTrack() {}, setTrack() {},
+    setCustomTrack() {}, setCustomThumbnail() {}, seek() {},
+    getPosition() { return 0; },
+    getCurrentTrack() { return { title: '', artist: '', duration: 240 }; },
+    get currentIndex() { return 0; },
+    get playbackState() { return 'stopped' as const; },
+    get tracks() { return []; },
+  };
+  const noopRgb: RgbController = {
+    getLastFrame() { return null; },
+    getDecodedImageData() { return null; },
+    getPalette() { return []; },
+    onFrame() { return () => {}; },
+    simulateFrame() {},
+  };
+  const noopLifecycle: LifecycleController = {
+    pause() {}, resume() {}, setFps() {},
+    get isPaused() { return false; },
+  };
+  const noopProps: PropertiesController = {
+    getProperty() { return undefined; },
+    getAllProperties() { return []; },
+    getVisibility() { return { key: '', visible: true, condition: null }; },
+    getAllVisibility() { return []; },
+    checkTranslation() { return { key: '', i18nKey: '', missing: false, displayName: '' }; },
+    getMissingTranslations() { return []; },
+    getVisibleProperties() { return []; },
+    getCurrentValues() { return {}; },
+    async reloadProperties() {},
   };
   return {
     destroy() {},
     togglePanel() {},
-    getConfig() {
-      return { ...config };
-    },
+    getConfig() { return { ...config }; },
     pushProperties() {},
     pushAudioFrame() {},
+    setAudioEnabled() {},
     nextTrack() {},
     state,
+    media: noopMedia,
+    rgb: noopRgb,
+    lifecycle: noopLifecycle,
+    properties: noopProps,
   };
 }
 
@@ -196,6 +250,229 @@ function installAudioCallback(sim: AudioSimulatorController, state: InternalStat
   });
 }
 
+// ---- 子控制器工厂 ----
+
+/**
+ * 创建 MediaController 包装器
+ */
+function createMediaController(mock: MediaMockController | undefined): MediaController {
+  const noopCtrl: MediaController = {
+    play() {},
+    pause() {},
+    stop() {},
+    nextTrack() {},
+    prevTrack() {},
+    setTrack() {},
+    setCustomTrack() {},
+    setCustomThumbnail() {},
+    seek() {},
+    getPosition() { return 0; },
+    getCurrentTrack() { return { title: '', artist: '', duration: 240 }; },
+    get currentIndex() { return 0; },
+    get playbackState() { return 'stopped' as const; },
+    get tracks() { return []; },
+  };
+  if (!mock) return noopCtrl;
+  return {
+    play: () => mock.play(),
+    pause: () => mock.pause(),
+    stop: () => mock.stop(),
+    nextTrack: () => mock.nextTrack(),
+    prevTrack: () => mock.prevTrack(),
+    setTrack: (i: number) => mock.setTrack(i),
+    setCustomTrack: (t: Partial<MockTrack>) => mock.setCustomTrack(t),
+    setCustomThumbnail: (d: string) => mock.setCustomThumbnail(d),
+    seek: (p: number) => mock.seek(p),
+    getPosition: () => mock.getPosition(),
+    getCurrentTrack: () => mock.getCurrentTrack(),
+    get currentIndex() { return mock.currentIndex; },
+    get playbackState() { return mock.playbackState; },
+    get tracks() { return mock.tracks; },
+  };
+}
+
+/**
+ * 创建 LifecycleController 包装器
+ */
+function createLifecycleController(mock: ReturnType<typeof createLifecycleMock> | undefined): LifecycleController {
+  const noopCtrl: LifecycleController = {
+    pause() {},
+    resume() {},
+    setFps() {},
+    get isPaused() { return false; },
+  };
+  if (!mock) return noopCtrl;
+  return {
+    pause: () => mock.simulatePause(),
+    resume: () => mock.simulateResume(),
+    setFps: (fps: number) => mock.simulateFpsChange(fps),
+    get isPaused() { return mock.isPaused; },
+  };
+}
+
+/**
+ * 创建 RgbController 包装器
+ */
+function createRgbController(mock: ReturnType<typeof createRgbMock> | undefined): RgbController {
+  const noopCtrl: RgbController = {
+    getLastFrame() { return null; },
+    getDecodedImageData() { return null; },
+    getPalette() { return []; },
+    onFrame() { return () => {}; },
+    simulateFrame() {},
+  };
+  if (!mock) return noopCtrl;
+  return {
+    getLastFrame: () => mock.getLastFrame(),
+    getDecodedImageData: () => mock.getDecodedImageData(),
+    getPalette: () => mock.getPalette(),
+    onFrame: (cb: RgbFrameCallback) => mock.onFrame(cb),
+    simulateFrame: (w?: number, h?: number, d?: number[]) => mock.simulateFrame(w, h, d),
+  };
+}
+
+/**
+ * 创建 PropertiesController
+ *
+ * 从 project.json 加载属性定义，配合当前属性值提供可见性/翻译查询。
+ */
+function createPropertiesController(state: InternalState): PropertiesController {
+  let loadResult: LoadResult | null = null;
+  let props: ProjectPropertyDef[] = [];
+  let loadPromise: Promise<void> | null = null;
+
+  /** 延迟加载 project.json */
+  async function ensureLoaded(): Promise<void> {
+    if (loadResult) return;
+    if (loadPromise) return loadPromise;
+    loadPromise = (async () => {
+      try {
+        loadResult = await loadProjectProperties();
+        props = loadResult.properties;
+      } catch {
+        loadResult = { properties: [], rawLocalization: {}, allLocalizations: {}, activeLocalization: {}, appliedLanguage: 'en-us', availableLanguages: [], raw: {} };
+        props = [];
+      }
+    })();
+    return loadPromise;
+  }
+
+  /** 获取属性当前值（从已推送的 wallpaperPropertyListener 状态） */
+  function getCurrentValue(key: string): unknown {
+    // 尝试从 window 上的 listener 状态获取
+    // 如果是通过 we-dev-kit 注入的，属性值会被存储在 listener 中
+    // 但我们没有集中存储，所以提供一个兜底读取方式
+    return undefined;
+  }
+
+  /** 获取所有属性的当前值（读取 wallpaperPropertyListener 的 applyUserProperties 最后推送的值） */
+  function collectCurrentValues(): Record<string, unknown> {
+    // 返回空对象，实际值需用户通过 pushProperties 设置
+    return {};
+  }
+
+  const controller: PropertiesController = {
+    getProperty(key: string): ProjectPropertyDef | undefined {
+      return props.find(p => p.key === key);
+    },
+
+    getAllProperties(): ProjectPropertyDef[] {
+      return [...props];
+    },
+
+    getVisibility(key: string): PropertyVisibility {
+      const prop = props.find(p => p.key === key);
+      if (!prop) {
+        return { key, visible: true, condition: null };
+      }
+      if (!prop.condition) {
+        return { key, visible: true, condition: null };
+      }
+      const visibilityMap = evaluateAllConditions(props, (k: string) => {
+        const p = props.find(pp => pp.key === k);
+        return p?.value;
+      });
+      const visible = visibilityMap[key] ?? true;
+      // 找到导致不可见的属性
+      let blockedBy: string | undefined;
+      let blockedValue: unknown;
+      if (!visible) {
+        for (const [ck, cv] of Object.entries(visibilityMap)) {
+          if (!cv && ck !== key) {
+            blockedBy = ck;
+            blockedValue = props.find(p => p.key === ck)?.value;
+            break;
+          }
+        }
+      }
+      return { key, visible, condition: prop.condition ?? null, blockedBy, blockedValue };
+    },
+
+    getAllVisibility(): PropertyVisibility[] {
+      const visibilityMap = evaluateAllConditions(props, (k: string) => {
+        const p = props.find(pp => pp.key === k);
+        return p?.value;
+      });
+      return props.map(p => ({
+        key: p.key,
+        visible: visibilityMap[p.key] ?? true,
+        condition: p.condition ?? null,
+      }));
+    },
+
+    checkTranslation(key: string): PropertyTranslationStatus {
+      const prop = props.find(p => p.key === key);
+      if (!prop) {
+        return { key, i18nKey: key, missing: false, displayName: key };
+      }
+      return {
+        key: prop.key,
+        i18nKey: prop.text ?? prop.key,
+        missing: prop.missingTranslation ?? false,
+        displayName: prop.displayName ?? prop.key,
+      };
+    },
+
+    getMissingTranslations(): PropertyTranslationStatus[] {
+      return props
+        .filter(p => p.missingTranslation)
+        .map(p => ({
+          key: p.key,
+          i18nKey: p.text ?? p.key,
+          missing: true,
+          displayName: p.displayName ?? p.key,
+        }));
+    },
+
+    getVisibleProperties(): ProjectPropertyDef[] {
+      const visibilityMap = evaluateAllConditions(props, (k: string) => {
+        const p = props.find(pp => pp.key === k);
+        return p?.value;
+      });
+      return props.filter(p => visibilityMap[p.key] ?? true);
+    },
+
+    getCurrentValues(): Record<string, unknown> {
+      const values: Record<string, unknown> = {};
+      for (const p of props) {
+        values[p.key] = p.value;
+      }
+      return values;
+    },
+
+    async reloadProperties() {
+      loadPromise = null;
+      loadResult = null;
+      await ensureLoaded();
+    },
+  };
+
+  // 初始化加载（不阻塞构造）
+  ensureLoaded().catch(() => {});
+
+  return controller;
+}
+
 // ---- 公有 API ----
 
 /**
@@ -224,6 +501,9 @@ export function createWeDevKit(options?: DevKitConfig): DevKitInstance {
   // ---- 音频帧分发（必须先定义，audioSimulator 启动时会立即回调） ----
   const audioListeners: Set<(data: Float32Array) => void> = new Set();
 
+  // Task 0: 音频数据传入开关
+  let _audioEnabled = true;
+
   // 修补 wallpaperRegisterAudioListener 以收集回调
   const origRegisterAudio = (window as any).wallpaperRegisterAudioListener;
   (window as any).wallpaperRegisterAudioListener = (cb: (data: Float32Array) => void) => {
@@ -234,6 +514,8 @@ export function createWeDevKit(options?: DevKitConfig): DevKitInstance {
   };
 
   function dispatchAudioFrame(frame: Float32Array) {
+    // 生命周期暂停时停止分发（可视化直接暂停，不归零）
+    if ((window as any).__weLifecyclePaused === true) return;
     // 结果转为普通数组以兼容 WE API（有些项目用 Array 而非 Float32Array）
     const arr: number[] = Array.from(frame);
     // 推给所有注册的监听器
@@ -251,6 +533,9 @@ export function createWeDevKit(options?: DevKitConfig): DevKitInstance {
     installPropertyMock(state);
   }
 
+  // ---- 子控制器（先于模块创建，但暴露在实例上） ----
+  let propertiesController = createPropertiesController(state);
+
   // 可变的 RGB 帧转发引用（在 panel 创建后设置）
   let forwardRgbFrame: ((frame: RgbFrameData) => void) | null = null;
 
@@ -260,11 +545,13 @@ export function createWeDevKit(options?: DevKitConfig): DevKitInstance {
       if (forwardRgbFrame) forwardRgbFrame(frame);
     });
   }
+  const rgbController = createRgbController(rgbMock);
 
   let lifecycleMock: ReturnType<typeof createLifecycleMock> | undefined;
   if (config.lifecycle) {
     lifecycleMock = createLifecycleMock(state);
   }
+  const lifecycleController = createLifecycleController(lifecycleMock);
 
   let audioSim: AudioSimulatorController | undefined;
   if (isAudioEnabled(config)) {
@@ -290,6 +577,7 @@ export function createWeDevKit(options?: DevKitConfig): DevKitInstance {
     const tracks: MockTrack[] = mc.tracks;
     mediaMock = createMediaMock(tracks, state);
   }
+  const mediaController = createMediaController(mediaMock);
 
   // 4. 控制面板（最后加载）
   let panelController: ReturnType<typeof createPanel> | undefined;
@@ -300,6 +588,13 @@ export function createWeDevKit(options?: DevKitConfig): DevKitInstance {
       audioSimulator: audioSim,
       mediaMock,
       lifecycleMock,
+      setAudioEnabled: (enabled: boolean) => {
+        _audioEnabled = enabled;
+        if (audioSim) {
+          audioSim.fadeTo(enabled ? (config.audio as ResolvedAudioConfig).amplitude : 0, 800);
+        }
+        console.log(`[WE Dev Kit] Audio ${enabled ? 'enabled' : 'disabled'} (from panel, fade ${enabled ? 'in' : 'out'})`);
+      },
     });
 
     // 连接 RGB 帧数据到面板
@@ -354,8 +649,16 @@ export function createWeDevKit(options?: DevKitConfig): DevKitInstance {
       }
     },
 
-    pushAudioFrame() {
+    setAudioEnabled(enabled: boolean) {
+      _audioEnabled = enabled;
       if (audioSim) {
+        audioSim.fadeTo(enabled ? (config.audio as ResolvedAudioConfig).amplitude : 0, 800);
+      }
+      console.log(`[WE Dev Kit] Audio ${enabled ? 'enabled' : 'disabled'} (fade ${enabled ? 'in' : 'out'})`);
+    },
+
+    pushAudioFrame() {
+      if (audioSim && _audioEnabled) {
         audioSim.pushFrame();
       }
     },
@@ -372,7 +675,14 @@ export function createWeDevKit(options?: DevKitConfig): DevKitInstance {
       currentTrackIndex: mediaMock ? mediaMock.currentIndex : 0,
       playbackState: mediaMock ? mediaMock.playbackState : 'stopped',
       isRgbPluginLoaded: state.isRgbPluginLoaded,
+      isAudioEnabled: true,
     } as DevKitState,
+
+    // ---- 子控制器 ----
+    media: mediaController,
+    rgb: rgbController,
+    lifecycle: lifecycleController,
+    properties: propertiesController,
   };
 
   // 状态引用更新
@@ -390,6 +700,10 @@ export function createWeDevKit(options?: DevKitConfig): DevKitInstance {
   });
   Object.defineProperty(instance.state, 'isRgbPluginLoaded', {
     get: () => state.isRgbPluginLoaded,
+    enumerable: true,
+  });
+  Object.defineProperty(instance.state, 'isAudioEnabled', {
+    get: () => _audioEnabled,
     enumerable: true,
   });
 
