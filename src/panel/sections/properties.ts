@@ -5,7 +5,7 @@
 import type { ProjectPropertyDef, PropertyType } from '../../types';
 import { getPanelMessages } from '../i18n';
 import { weColorToHex, hexToWeColor } from '../../utils/color';
-import { showPropertyModal, type PropertyEditorSaveHandler } from '../modal/propertyEditor';
+import { showPropertyModal, type PropertyEditorSaveHandler, type PropertyEditorContext } from '../modal/propertyEditor';
 import { evaluateAllConditions, type VisibilityMap } from '../conditionEvaluator';
 import { createRow, createLabel } from '../../utils/dom';
 import { debounce } from '../../utils/time';
@@ -28,7 +28,8 @@ export function populatePropertiesSection(
   cb: PanelCallbacks,
   appliedLanguage: string,
   availableLanguages: string[],
-  onLanguageSwitch?: (lang: string) => void
+  onLanguageSwitch?: (lang: string) => void,
+  editorContext?: PropertyEditorContext
 ): PanelPropertiesRefresher {
   // ---- 语言切换行 ----
   const langRow = createRow();
@@ -131,7 +132,7 @@ export function populatePropertiesSection(
     const editorSave: PropertyEditorSaveHandler = (isNew, originalKey, def) => {
       applyEditorResult(isNew, originalKey, def);
     };
-    showPropertyModal(null, editorSave);
+    showPropertyModal(null, editorSave, editorContext);
   });
   actionRow.appendChild(addBtn);
 
@@ -342,7 +343,7 @@ export function populatePropertiesSection(
       e.stopPropagation();
       showPropertyModal(prop, (isNew, originalKey, def) => {
         applyEditorResult(isNew, originalKey, def);
-      });
+      }, editorContext);
     });
     row.appendChild(editBtn);
 

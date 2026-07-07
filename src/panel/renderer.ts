@@ -29,6 +29,7 @@ import { populateRgbSection } from './sections/rgb';
 import { populateLifecycleSection } from './sections/lifecycle';
 import { populatePropertiesSection } from './sections/properties';
 import { createDraggableHost, createShadowHost } from '../utils/dom';
+import type { PropertyEditorContext } from './modal/propertyEditor';
 import type {
   PanelCallbacks,
   PanelMediaUpdater,
@@ -70,7 +71,8 @@ export function renderPanel(
   appliedLanguage: string = 'en-us',
   availableLanguages: string[] = [],
   onLanguageSwitch?: (lang: string) => void,
-  messages?: PanelMessages
+  messages?: PanelMessages,
+  editorContext?: PropertyEditorContext
 ): PanelController {
   setPanelMessages(messages ?? resolvePanelMessages());
 
@@ -138,7 +140,8 @@ export function renderPanel(
     callbacks,
     appliedLanguage,
     availableLanguages,
-    onLanguageSwitch
+    onLanguageSwitch,
+    editorContext
   );
 
   // ---- 样式注入 ----

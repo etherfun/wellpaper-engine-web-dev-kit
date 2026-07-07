@@ -115,8 +115,17 @@ export function createPanel(deps: PanelDeps) {
           }
         }
         appliedLanguage = newLang;
+        // 通知所有 modal 实例更新（如果当前打开的话）
+        const evt = new CustomEvent('__weDevKitLocaleChanged', { detail: { lang: newLang } });
+        window.dispatchEvent(evt);
       },
-      resolvePanelMessages()
+      resolvePanelMessages(),
+      {
+        activeLocalization: allLocalizations[appliedLanguage] ?? {},
+        allLocalizations,
+        activeLanguage: appliedLanguage,
+        availableLanguages,
+      }
     );
 
     if (mediaMock) {
