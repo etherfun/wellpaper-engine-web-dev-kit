@@ -508,8 +508,10 @@ export function showPropertyModal(
   function rebuildTypeSpecificFields(): void {
     typeSpecificWrap.innerHTML = '';
     const t = typeSelect.value;
-    typeSpecificLabel.textContent = t.charAt(0).toUpperCase() + t.slice(1);
+
     if (t === 'slider') {
+      typeSpecificRow.style.display = '';
+      typeSpecificLabel.textContent = 'Slider';
       // 2-column grid: label / input pairs
       const grid = document.createElement('div');
       grid.className = 'prop-modal-grid-2col';
@@ -530,25 +532,38 @@ export function showPropertyModal(
       typeSpecificWrap.appendChild(grid);
       typeSpecificWrap.appendChild(sliderFractionLabel);
     } else if (t === 'file') {
+      typeSpecificRow.style.display = '';
+      typeSpecificLabel.textContent = 'File';
       const row = document.createElement('div');
       row.className = 'prop-modal-inline-row';
       row.appendChild(fileVideoLabel);
       typeSpecificWrap.appendChild(row);
     } else if (t === 'directory') {
+      typeSpecificRow.style.display = '';
+      typeSpecificLabel.textContent = 'Directory';
       const row = document.createElement('div');
       row.className = 'prop-modal-inline-row';
       row.appendChild(fileVideoLabel);
       row.appendChild(dirOndemandLabel);
       typeSpecificWrap.appendChild(row);
     } else {
-      typeSpecificLabel.textContent = '—';
+      // 其它类型（bool / color / combo / text / textinput / group）无专属字段
+      typeSpecificRow.style.display = 'none';
     }
   }
 
   rebuildTypeSpecificFields();
 
   // ---- 5. Combo 选项表格（仅 combo 类型显示） ----
-  addSeparator('📋 ' + getPanelMessages().propertyOptions);
+  // 把分隔线和表格包进同一个容器，方便整体隐藏
+  const optsContainer = document.createElement('div');
+  optsContainer.className = 'prop-modal-section';
+  body.appendChild(optsContainer);
+
+  const optsSep = document.createElement('div');
+  optsSep.className = 'prop-modal-sep';
+  optsSep.textContent = '📋 ' + getPanelMessages().propertyOptions;
+  optsContainer.appendChild(optsSep);
 
   const optsWrap = document.createElement('div');
   optsWrap.className = 'prop-opts-container';
@@ -626,11 +641,11 @@ export function showPropertyModal(
   optsWrap.appendChild(optsTable);
   optsWrap.appendChild(addOptBtn);
 
-  // 整体作为一个 row 放进 body
+  // 整体作为容器内的一个 row（方便与分隔线一起隐藏）
   const optsRow = document.createElement('div');
   optsRow.className = 'prop-modal-row';
   optsRow.appendChild(optsWrap);
-  body.appendChild(optsRow);
+  optsContainer.appendChild(optsRow);
 
   // ---- 6. 元数据（order + index + condition） ----
   addSeparator('🗂 ' + getPanelMessages().sectionProperties);
@@ -666,11 +681,14 @@ export function showPropertyModal(
     }
     rebuildValueControl();
     rebuildTypeSpecificFields();
-    optsRow.style.display = typeSelect.value === 'combo' ? '' : 'none';
+    // 选项区域仅 combo 类型显示（隐藏整个容器包括分隔线）
+    optsContainer.style.display = typeSelect.value === 'combo' ? '' : 'none';
   });
 
   rebuildValueControl();
-  optsRow.style.display = typeSelect.value === 'combo' ? '' : 'none';
+  // 初始化：按当前类型决定 typeSpecific + options 显示状态
+  rebuildTypeSpecificFields();
+  optsContainer.style.display = typeSelect.value === 'combo' ? '' : 'none';
 
   // ---- 按钮行 ----
   const btnRow = document.createElement('div');
