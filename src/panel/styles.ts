@@ -1116,15 +1116,39 @@ export const GLOBAL_MODAL_STYLES = `
   outline: none;
   box-sizing: border-box;
   height: 22px;
-  width: 60px;
+  width: 100%;
 }
 .prop-modal-input-sm:focus { border-color: #7c9aff; }
 
+/* 类型专属区域内的 2 列网格（slider 范围） */
+.prop-modal-grid-2col {
+  display: grid;
+  grid-template-columns: 56px 1fr 56px 1fr;
+  gap: 6px 8px;
+  align-items: center;
+  width: 100%;
+}
+.prop-modal-grid-label {
+  font-size: 10px;
+  color: #888;
+  text-align: right;
+  letter-spacing: 0.3px;
+}
+.prop-modal-grid-2col input.prop-modal-input-sm { width: 100%; }
+
+/* 类型专属区域内的横向单行（file/directory 复选框组） */
+.prop-modal-inline-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 4px 0;
+}
+
+/* 旧 mini-label 类已不再使用，保留以防回归 */
 .prop-modal-mini-label {
   font-size: 9px;
   color: #666;
-  width: 60px;
-  text-align: center;
   letter-spacing: 0.3px;
 }
 

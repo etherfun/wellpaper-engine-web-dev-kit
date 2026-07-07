@@ -450,7 +450,7 @@ export function showPropertyModal(
   typeSpecificRow.appendChild(typeSpecificLabel);
   const typeSpecificWrap = document.createElement('div');
   typeSpecificWrap.className = 'prop-modal-row-control';
-  typeSpecificWrap.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;';
+  typeSpecificWrap.style.cssText = 'display:flex;flex-direction:column;gap:6px;width:100%;';
   typeSpecificRow.appendChild(typeSpecificWrap);
   body.appendChild(typeSpecificRow);
 
@@ -510,33 +510,36 @@ export function showPropertyModal(
     const t = typeSelect.value;
     typeSpecificLabel.textContent = t.charAt(0).toUpperCase() + t.slice(1);
     if (t === 'slider') {
-      const lbls = [
-        getPanelMessages().minLabel,
-        getPanelMessages().maxLabel,
-        getPanelMessages().stepLabel,
-        getPanelMessages().precisionLabel,
-        '',
-      ];
-      for (const txt of lbls) {
-        const s = document.createElement('span');
-        s.className = 'prop-modal-mini-label';
-        s.textContent = txt;
-        typeSpecificWrap.appendChild(s);
-      }
-      const sep1 = document.createElement('span');
-      sep1.style.cssText = 'flex:0 0 100%;height:0;';
-      typeSpecificWrap.appendChild(sep1);
+      // 2-column grid: label / input pairs
+      const grid = document.createElement('div');
+      grid.className = 'prop-modal-grid-2col';
 
-      typeSpecificWrap.appendChild(sliderMin);
-      typeSpecificWrap.appendChild(sliderMax);
-      typeSpecificWrap.appendChild(sliderStep);
-      typeSpecificWrap.appendChild(sliderPrecision);
+      const fields: Array<[string, HTMLElement]> = [
+        [getPanelMessages().minLabel, sliderMin],
+        [getPanelMessages().maxLabel, sliderMax],
+        [getPanelMessages().stepLabel, sliderStep],
+        [getPanelMessages().precisionLabel, sliderPrecision],
+      ];
+      for (const [lbl, inp] of fields) {
+        const labelEl = document.createElement('span');
+        labelEl.className = 'prop-modal-grid-label';
+        labelEl.textContent = lbl;
+        grid.appendChild(labelEl);
+        grid.appendChild(inp);
+      }
+      typeSpecificWrap.appendChild(grid);
       typeSpecificWrap.appendChild(sliderFractionLabel);
     } else if (t === 'file') {
-      typeSpecificWrap.appendChild(fileVideoLabel);
+      const row = document.createElement('div');
+      row.className = 'prop-modal-inline-row';
+      row.appendChild(fileVideoLabel);
+      typeSpecificWrap.appendChild(row);
     } else if (t === 'directory') {
-      typeSpecificWrap.appendChild(fileVideoLabel);
-      typeSpecificWrap.appendChild(dirOndemandLabel);
+      const row = document.createElement('div');
+      row.className = 'prop-modal-inline-row';
+      row.appendChild(fileVideoLabel);
+      row.appendChild(dirOndemandLabel);
+      typeSpecificWrap.appendChild(row);
     } else {
       typeSpecificLabel.textContent = '—';
     }
