@@ -7,48 +7,46 @@
 import type {
   AudioMode,
   AudioSimulatorController,
-  DevKitConfig,
   InternalState,
+  LifecycleMockController,
   MediaMockController,
   MockTrack,
-  PlaybackState,
   ProjectPropertyDef,
-  RgbFrameCallback,
+  RgbFrameData,
 } from '../types';
-import { loadProjectProperties } from './projectJsonReader';
-import { renderPanel } from './renderer';
+import {
+  loadProjectProperties,
+  serializePropertiesToJson,
+  downloadJsonFile,
+} from './projectJsonReader';
+import { renderPanel, type PanelController } from './renderer';
 import { resolvePanelMessages } from './i18n';
 
-interface PanelDeps {
-  config: DevKitConfig;
+export interface PanelDeps {
+  config: import('../types').DevKitConfig;
   state: InternalState;
   audioSimulator?: AudioSimulatorController;
   mediaMock?: MediaMockController;
-  lifecycleMock?: {
-    simulatePause: () => void;
-    simulateResume: () => void;
-    simulateFpsChange: (fps: number) => void;
-  };
+  lifecycleMock?: LifecycleMockController;
   /** Task 0: 音频数据传入开关 */
   setAudioEnabled?: (enabled: boolean) => void;
 }
 
 export function createPanel(deps: PanelDeps) {
   const { config, state, audioSimulator, mediaMock, lifecycleMock, setAudioEnabled } = deps;
-  let panelController: PanelUIController | null = null;
+  let panelController: PanelController | null = null;
   let isVisible = false;
   let props: ProjectPropertyDef[] = [];
-  let rawDefs: Record<string, any> = {};
-  let appliedLanguage: string = 'en-us';
+  let rawDefs: Record<string, unknown> = {};
+  let appliedLanguage = 'en-us';
   let allLocalizations: Record<string, Record<string, string>> = {};
   let availableLanguages: string[] = [];
   let refreshMediaTimer: ReturnType<typeof setInterval> | null = null;
 
-  // ---- 加载 project.json 属性 ----
-  async function initProperties() {
+  async function initProperties(): Promise<ProjectPropertyDef[]> {
     const result = await loadProjectProperties();
     props = result.properties;
-    rawDefs = result.raw;
+    rawDefs = result.raw as Record<string, unknown>;
     appliedLanguage = result.appliedLanguage;
     allLocalizations = result.allLocalizations;
     availableLanguages = result.availableLanguages;
@@ -56,25 +54,17 @@ export function createPanel(deps: PanelDeps) {
     return props;
   }
 
-  // ---- 创建面板 ----
-  async function create() {
+  async function create(): Promise<void> {
     if (panelController) return;
-
-    // 加载属性
     const initialProps = await initProperties();
 
-    // 创建面板 DOM
     panelController = renderPanel(
       document.body,
       state,
-      {
-        audio: audioSimulator,
-        media: mediaMock,
-      },
+      { audio: audioSimulator, media: mediaMock },
       {
         onPropertyChange: (key, value) => {
-          // 推送到 wallpaperPropertyListener
-          const listener = (window as any).wallpaperPropertyListener;
+          const listener = (window as unknown as { wallpaperPropertyListener?: { applyUserProperties?: (p: Record<string, unknown>) => void } }).wallpaperPropertyListener;
           if (listener?.applyUserProperties) {
             listener.applyUserProperties({ [key]: { value } });
           }
@@ -104,22 +94,24 @@ export function createPanel(deps: PanelDeps) {
       initialProps,
       appliedLanguage,
       availableLanguages,
-      // 语言切换回调：原地更新 props 的 displayName 和选项 label
       (newLang: string) => {
         const localeMap = allLocalizations[newLang] ?? {};
+        const hasAnyKeys = Object.keys(localeMap).length > 0;
         for (const prop of props) {
           if (prop.type === 'group' || prop.type === 'text') continue;
           if (!prop.text || prop.text === prop.key) continue;
           const dn = localeMap[prop.text]?.trim();
-          prop.displayName = dn || prop.key;
+          prop.displayName = dn || prop.text;
+          prop.missingTranslation = hasAnyKeys && !dn;
           prop.missingTranslation = !dn;
-          // 重新解析 combo 选项 label
-          if ((prop.type === 'combo') && rawDefs[prop.key]?.options) {
-            const rawOpts = rawDefs[prop.key].options!;
-            prop.options = rawOpts.map(opt => ({
-              value: opt.value,
-              label: localeMap[opt.label]?.trim() || opt.label,
-            }));
+          if (prop.type === 'combo') {
+            const rawOpts = (rawDefs[prop.key] as { options?: { value: unknown; label: string }[] } | undefined)?.options;
+            if (rawOpts) {
+              prop.options = rawOpts.map((opt) => ({
+                value: opt.value,
+                label: localeMap[opt.label]?.trim() || opt.label,
+              }));
+            }
           }
         }
         appliedLanguage = newLang;
@@ -127,35 +119,35 @@ export function createPanel(deps: PanelDeps) {
       resolvePanelMessages()
     );
 
-    // 媒体刷新定时器
     if (mediaMock) {
       refreshMediaTimer = setInterval(() => {
         const track = mediaMock.getCurrentTrack();
         const pbs = mediaMock.playbackState;
         const position = mediaMock.getPosition();
-        const duration = track.duration || 240;
+        const duration = track.duration ?? 240;
         const trackIndex = mediaMock.currentIndex;
-        updateMediaDisplay(track, pbs, position, duration, trackIndex);
+        const updater = panelController!.getMediaUpdater();
+        updater(track, pbs, position, duration, trackIndex);
       }, 500);
     }
 
+    (window as unknown as { __weDevKitPropertiesChanged?: (p: ProjectPropertyDef[]) => void }).__weDevKitPropertiesChanged = (newProps: ProjectPropertyDef[]) => {
+      props = newProps;
+      panelController!.getPropertiesRefresher()(newProps);
+    };
+    (window as unknown as { __weDevKitExportJson?: () => void }).__weDevKitExportJson = () => {
+      const json = serializePropertiesToJson(props);
+      downloadJsonFile({ general: { properties: json } }, 'project.json');
+      console.log(`[WE Dev Kit] JSON exported: ${Object.keys(json).length} properties`);
+    };
+
     isVisible = true;
+    void config;
   }
 
-  function updateMediaDisplay(track: MockTrack, state: PlaybackState, position: number, duration: number, trackIndex?: number) {
-    if (panelController) {
-      const root = (panelController as any).shadowRoot;
-      if (!root) return;
-      const mediaContent = root.getElementById('__we_media-content');
-      if (mediaContent && (mediaContent as any).__updateMedia) {
-        (mediaContent as any).__updateMedia(track, state, position, duration, trackIndex ?? -1);
-      }
-    }
-  }
-
-  function show() {
+  function show(): void {
     if (!panelController) {
-      create().catch(console.warn);
+      void create();
       return;
     }
     panelController.isVisible = true;
@@ -163,19 +155,19 @@ export function createPanel(deps: PanelDeps) {
     isVisible = true;
   }
 
-  function hide() {
+  function hide(): void {
     if (!panelController) return;
     panelController.isVisible = false;
     panelController.element.style.display = 'none';
     isVisible = false;
   }
 
-  function toggle() {
+  function toggle(): void {
     if (isVisible) hide();
     else show();
   }
 
-  function destroy() {
+  function destroy(): void {
     if (refreshMediaTimer) {
       clearInterval(refreshMediaTimer);
       refreshMediaTimer = null;
@@ -184,17 +176,20 @@ export function createPanel(deps: PanelDeps) {
       panelController.destroy();
       panelController = null;
     }
+    delete (window as unknown as Record<string, unknown>).__weDevKitPropertiesChanged;
+    delete (window as unknown as Record<string, unknown>).__weDevKitExportJson;
     isVisible = false;
   }
 
-  function updateRgbFrame(frame: import('../types').RgbFrameData) {
+  function updateRgbFrame(frame: RgbFrameData): void {
     if (!panelController) return;
-    const root = (panelController as any).shadowRoot;
-    if (!root) return;
-    const el = root.getElementById('__we_rgb-content');
-    if (el && (el as any).__updateRgbFrame) {
-      (el as any).__updateRgbFrame(frame);
-    }
+    const updater = panelController.getRgbUpdater();
+    updater(frame);
+  }
+
+  function refreshProperties(newProps?: ProjectPropertyDef[]): void {
+    if (!panelController) return;
+    panelController.getPropertiesRefresher()(newProps);
   }
 
   return {
@@ -203,23 +198,10 @@ export function createPanel(deps: PanelDeps) {
     toggle,
     destroy,
     updateRgbFrame,
+    refreshProperties,
     get isVisible() {
       return isVisible;
     },
     ensureCreated: create,
-    /** 刷新属性列表（当 project.json 变化时调用） */
-    async refreshProperties() {
-      await initProperties();
-    },
   };
-}
-
-interface PanelUIController {
-  element: HTMLElement;
-  styleEl: HTMLElement;
-  clockInterval: ReturnType<typeof setInterval>;
-  isVisible: boolean;
-  destroy(): void;
-  updateStatus(isRealWE: boolean): void;
-  updateRgbState(loaded: boolean): void;
 }

@@ -286,6 +286,54 @@ export const PANEL_STYLES = `
   width: 100%;
 }
 
+/* ---- 文件/目录选择器 ---- */
+#__we_devkit_panel .picker-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+}
+#__we_devkit_panel .picker-row .picker-value {
+  flex: 1;
+  font-size: 10px;
+  color: #aaa;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: rgba(0,0,0,0.35);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 4px;
+  padding: 2px 6px;
+  min-height: 18px;
+  line-height: 18px;
+  cursor: default;
+}
+#__we_devkit_panel .picker-row .picker-btn {
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: #ccc;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+#__we_devkit_panel .picker-row .picker-btn:hover {
+  background: rgba(124, 154, 255, 0.25);
+  border-color: #7c9aff;
+  color: #fff;
+}
+#__we_devkit_panel .picker-row .picker-btn.clear-btn {
+  color: #e57373;
+  border-color: rgba(229, 115, 115, 0.3);
+}
+#__we_devkit_panel .picker-row .picker-btn.clear-btn:hover {
+  background: rgba(229, 115, 115, 0.2);
+  border-color: #e57373;
+}
+
 /* ---- 按钮 ---- */
 #__we_devkit_panel .btn-group {
   display: flex;
@@ -386,7 +434,7 @@ export const PANEL_STYLES = `
 }
 #__we_devkit_panel .prop-row {
   display: grid;
-  grid-template-columns: 20px 14px 1fr 1.2fr;
+  grid-template-columns: 20px 14px 1fr 1fr auto auto;
   align-items: center;
   gap: 4px;
   padding: 3px 0;
@@ -525,6 +573,124 @@ export const PANEL_STYLES = `
   margin-left: auto;
 }
 
+/* ---- 操作行（添加 / 导出） ---- */
+#__we_devkit_panel .prop-action-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+#__we_devkit_panel .prop-action-row .btn {
+  flex: 1;
+  font-size: 11px;
+  padding: 4px 8px;
+}
+
+/* ---- 属性编辑/删除按钮 ---- */
+#__we_devkit_panel .prop-edit-btn {
+  background: rgba(124,154,255,0.12);
+  border: 1px solid rgba(124,154,255,0.2);
+  color: #7c9aff;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 9px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  line-height: 1.4;
+  transition: all 0.15s;
+}
+#__we_devkit_panel .prop-edit-btn:hover {
+  background: rgba(124,154,255,0.25);
+}
+#__we_devkit_panel .prop-del-btn {
+  background: rgba(229,115,115,0.12);
+  border: 1px solid rgba(229,115,115,0.2);
+  color: #e57373;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  line-height: 1.4;
+  transition: all 0.15s;
+}
+#__we_devkit_panel .prop-del-btn:hover {
+  background: rgba(229,115,115,0.25);
+}
+
+/* ---- 属性编辑弹窗 ---- */
+#__we_devkit_panel .prop-modal-overlay,
+.prop-modal-overlay {
+  all: initial;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 2147483647;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+}
+#__we_devkit_panel .prop-modal-box,
+.prop-modal-box {
+  background: #2a2a2f;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 10px;
+  padding: 20px;
+  min-width: 340px;
+  max-width: 460px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  color: #e0e0e0;
+  font-size: 13px;
+}
+#__we_devkit_panel .prop-modal-title,
+.prop-modal-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0 0 14px 0;
+  color: #fff;
+}
+#__we_devkit_panel .prop-modal-label,
+.prop-modal-label {
+  display: block;
+  font-size: 11px;
+  color: #aaa;
+  margin: 8px 0 3px;
+}
+#__we_devkit_panel .prop-modal-box input[type="text"],
+.prop-modal-box input[type="text"],
+#__we_devkit_panel .prop-modal-box input[type="number"],
+.prop-modal-box input[type="number"],
+#__we_devkit_panel .prop-modal-box select,
+.prop-modal-box select {
+  width: 100%;
+  background: rgba(0,0,0,0.35);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: #e0e0e0;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  outline: none;
+  box-sizing: border-box;
+}
+#__we_devkit_panel .prop-modal-box input:focus,
+.prop-modal-box input:focus {
+  border-color: #7c9aff;
+}
+#__we_devkit_panel .prop-modal-btn-row,
+.prop-modal-btn-row {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+#__we_devkit_panel .prop-modal-btn-row .btn,
+.prop-modal-btn-row .btn {
+  padding: 6px 16px;
+  font-size: 12px;
+}
+
 /* 隐藏状态的行视觉淡化（保留可见性指示器清晰可见） */
 #__we_devkit_panel .prop-row.is-hidden .prop-key {
   opacity: 0.4;
@@ -560,5 +726,252 @@ export const PANEL_STYLES = `
     left: 8px !important;
     right: 8px !important;
   }
+}
+`;
+
+/**
+ * 浮动属性编辑窗口样式 — 注入到 document.head。
+ * 不含 #__we_devkit_panel 前缀，确保在全局生效。
+ */
+export const GLOBAL_MODAL_STYLES = `
+.prop-modal-float {
+  all: initial;
+  position: fixed;
+  z-index: 2147483646;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+}
+.prop-modal-float-inner {
+  background: rgba(30, 30, 35, 0.95);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  overflow: hidden;
+  user-select: none;
+}
+.prop-modal-float-header {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  background: rgba(0,0,0,0.3);
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  cursor: move;
+}
+.prop-modal-float-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #ccc;
+  letter-spacing: 0.5px;
+  flex: 1;
+}
+.prop-modal-float-header .panel-btn {
+  background: none;
+  border: none;
+  color: #888;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  line-height: 1;
+}
+.prop-modal-float-header .panel-btn:hover {
+  color: #fff;
+  background: rgba(255,255,255,0.1);
+}
+.prop-modal-float-body {
+  padding: 0;
+  color: #e0e0e0;
+  font-size: 13px;
+}
+
+/* ---- 双列行 ---- */
+.prop-modal-row {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  min-height: 32px;
+}
+.prop-modal-row:last-of-type {
+  border-bottom: none;
+}
+.prop-modal-row-label {
+  flex: 0 0 90px;
+  font-size: 11px;
+  color: #aaa;
+  padding: 0 8px;
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.prop-modal-row-control {
+  flex: 1;
+  padding: 3px 8px 3px 0;
+  min-width: 0;
+}
+
+/* ---- 控件统一样式 ---- */
+.prop-modal-row-control input[type="text"],
+.prop-modal-row-control input[type="number"] {
+  width: 100%;
+  background: #1a1a1a;
+  border: 1px solid #444;
+  color: #e0e0e0;
+  padding: 4px 8px;
+  border-radius: 3px;
+  font-size: 12px;
+  outline: none;
+  box-sizing: border-box;
+  height: 24px;
+}
+.prop-modal-row-control input:focus {
+  border-color: #7c9aff;
+}
+.prop-modal-row-control input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ---- 自定义下拉框（带箭头） ---- */
+.prop-modal-select {
+  width: 100%;
+  height: 24px;
+  background: #1a1a1a;
+  border: 1px solid #444;
+  color: #e0e0e0;
+  padding: 0 24px 0 8px;
+  border-radius: 3px;
+  font-size: 12px;
+  outline: none;
+  box-sizing: border-box;
+  cursor: pointer;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+}
+.prop-modal-select:focus {
+  border-color: #7c9aff;
+}
+.prop-modal-select option {
+  background: #1a1a1a;
+  color: #e0e0e0;
+}
+
+/* ---- 选项表格 ---- */
+.prop-opts-table {
+  border: 1px solid #444;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+.prop-opts-thead {
+  display: flex;
+  background: rgba(255,255,255,0.05);
+  border-bottom: 1px solid #444;
+}
+.prop-opts-th {
+  flex: 1;
+  font-size: 10px;
+  color: #888;
+  padding: 3px 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.prop-opts-th-action {
+  flex: 0 0 28px;
+  text-align: center;
+}
+.prop-opts-tbody {
+}
+.prop-opts-row {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.prop-opts-row:last-child {
+  border-bottom: none;
+}
+.prop-opts-input {
+  flex: 1;
+  background: transparent !important;
+  border: none !important;
+  color: #e0e0e0;
+  padding: 3px 6px !important;
+  font-size: 12px;
+  outline: none;
+  height: 24px;
+  box-sizing: border-box;
+}
+.prop-opts-input:focus {
+  background: rgba(124,154,255,0.08) !important;
+}
+.prop-opts-del-btn {
+  flex: 0 0 28px;
+  background: none;
+  border: none;
+  color: #e57373;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px;
+  text-align: center;
+  line-height: 1;
+  opacity: 0.6;
+}
+.prop-opts-del-btn:hover {
+  opacity: 1;
+  color: #f44336;
+}
+.prop-opts-add-btn {
+  background: rgba(255,255,255,0.06);
+  border: 1px dashed #555;
+  color: #aaa;
+  padding: 3px 10px;
+  border-radius: 3px;
+  font-size: 11px;
+  cursor: pointer;
+  width: 100%;
+  box-sizing: border-box;
+  transition: all 0.15s;
+}
+.prop-opts-add-btn:hover {
+  background: rgba(124,154,255,0.12);
+  border-color: #7c9aff;
+  color: #7c9aff;
+}
+
+/* ---- 按钮行 ---- */
+.prop-modal-btn-row {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 10px 12px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
+.prop-modal-btn-row .btn {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: #ddd;
+  padding: 5px 18px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.prop-modal-btn-row .btn:hover {
+  background: rgba(124,154,255,0.25);
+  border-color: #7c9aff;
+  color: #fff;
+}
+.prop-modal-btn-row .btn.primary {
+  background: #4CAF50;
+  border-color: #4CAF50;
+  color: #fff;
+}
+.prop-modal-btn-row .btn.primary:hover {
+  background: #45a049;
 }
 `;

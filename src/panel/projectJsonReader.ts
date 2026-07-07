@@ -18,6 +18,16 @@ interface RawPropertyDef {
   text?: string;
   min?: number;
   max?: number;
+  /** slider 步进值 */
+  step?: number;
+  /** slider 小数精度 */
+  precision?: number;
+  /** slider 是否允许小数 */
+  fraction?: boolean;
+  /** file/directory 的文件类型过滤（如 "video"） */
+  fileType?: string;
+  /** directory 加载模式（"ondemand" | "fetchall"） */
+  mode?: string;
   options?: { value: unknown; label: string }[];
   condition?: string;
   order?: number;
@@ -94,16 +104,20 @@ export async function loadProjectProperties(
     const properties: ProjectPropertyDef[] = Object.entries(rawProps)
       .filter(([key]) => !key.startsWith('_'))
       .map(([key, def]) => {
-        const i18nKey = def.text || key;
-        const displayName = activeLocalization[i18nKey]?.trim();
-        const missingTranslation = !displayName && i18nKey !== key && def.type !== 'group' && def.type !== 'text';
+        const text = def.text || key;
+        // 如果 localization 中有匹配，用翻译值；否则用 text 字段本身（可以是中文描述）
+        const locDisplay = activeLocalization[text]?.trim();
+        const displayName = locDisplay || text;
+        // 只有存在 localization 字典且 key 不在其中时才算 missing
+        const hasLocalization = Object.keys(allLocalizations).length > 0;
+        const missingTranslation = hasLocalization && !locDisplay && def.type !== 'group' && def.type !== 'text';
 
         return {
           key,
           type: normalizeType(def.type),
           value: def.value,
-          text: i18nKey,
-          displayName: def.type === 'group' ? (def.text || key) : (displayName || key),
+          text,
+          displayName: def.type === 'group' ? (def.text || key) : displayName,
           missingTranslation,
           // 解析选项 label（combo 类型）
           options: def.options ? def.options.map(opt => ({
@@ -112,6 +126,12 @@ export async function loadProjectProperties(
           })) : undefined,
           condition: def.condition,
           order: def.order ?? 9999,
+          index: def.index,
+          step: def.step,
+          precision: def.precision,
+          fraction: def.fraction,
+          fileType: def.fileType,
+          mode: def.mode,
         };
       })
       .sort((a, b) => a.order - b.order);
@@ -184,13 +204,14 @@ export function resolveDisplayNames(
   props: ProjectPropertyDef[],
   localeMap: Record<string, string>,
 ): ProjectPropertyDef[] {
+  const hasAnyKeys = Object.keys(localeMap).length > 0;
   return props.map(prop => {
-    if (!prop.text || prop.text === prop.key || prop.type === 'group') return prop;
+    if (!prop.text || prop.type === 'group') return prop;
     const displayName = localeMap[prop.text]?.trim();
     return {
       ...prop,
-      displayName: displayName || prop.key,
-      missingTranslation: !displayName,
+      displayName: displayName || prop.text,
+      missingTranslation: hasAnyKeys && !displayName,
     };
   });
 }
@@ -227,4 +248,126 @@ function normalizeType(rawType: string): ProjectPropertyDef['type'] {
     group: 'group',
   };
   return knownTypes[t] || 'text';
+}
+
+/**
+ * 将当前属性列表序列化为 project.json general.properties 格式。
+ *
+ * @param props 当前属性定义列表
+ * @param rawRaw 上次加载的原始 raw 字段（保留原始未解析的字段）
+ * @returns 可直接写入 project.json 的 general.properties 对象
+ */
+export function serializePropertiesToJson(
+  props: ProjectPropertyDef[],
+  rawRaw?: Record<string, unknown>
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+
+  for (const prop of props) {
+    if (prop.type === 'group') {
+      // group 按 project.json 格式输出
+      const entry: Record<string, unknown> = {
+        type: 'group',
+        text: prop.text || prop.key,
+        order: prop.order ?? 9999,
+        index: prop.index ?? 0,
+      };
+      // 如果有原始记录，保留其它字段
+      const orig = rawRaw?.[prop.key] as Record<string, unknown> | undefined;
+      if (orig) {
+        for (const [k, v] of Object.entries(orig)) {
+          if (!(k in entry)) entry[k] = v;
+        }
+      }
+      out[prop.key] = entry;
+      continue;
+    }
+
+    const entry: Record<string, unknown> = {
+      type: denormalizeType(prop.type),
+      text: prop.text || prop.key,
+      order: prop.order ?? 9999,
+      index: prop.index ?? 0,
+    };
+
+    // 添加默认值
+    if (prop.value !== undefined && prop.value !== null) {
+      entry.value = prop.value;
+    }
+
+    // 类型特定字段
+    switch (prop.type) {
+      case 'slider': {
+        if (prop.min !== undefined) entry.min = prop.min;
+        if (prop.max !== undefined) entry.max = prop.max;
+        if (prop.step !== undefined) entry.step = prop.step;
+        if (prop.precision !== undefined) entry.precision = prop.precision;
+        if (prop.fraction !== undefined) entry.fraction = prop.fraction;
+        break;
+      }
+      case 'color': {
+        // color 类型需要特定处理 — 确保 value 是 "R G B" 格式
+        break;
+      }
+      case 'combo': {
+        if (prop.options && prop.options.length > 0) {
+          entry.options = prop.options.map(opt => ({
+            label: opt.label,
+            value: opt.value,
+          }));
+        }
+        break;
+      }
+      case 'file':
+      case 'directory': {
+        if (prop.fileType) entry.fileType = prop.fileType;
+        if (prop.mode) entry.mode = prop.mode;
+        break;
+      }
+    }
+
+    // 条件
+    if (prop.condition) {
+      entry.condition = prop.condition;
+    }
+
+    out[prop.key] = entry;
+  }
+
+  return out;
+}
+
+/**
+ * 将标准 type 映射回 WE project.json 的 type 字符串
+ */
+function denormalizeType(type: ProjectPropertyDef['type']): string {
+  const map: Record<string, string> = {
+    bool: 'bool',
+    slider: 'slider',
+    combo: 'combo',
+    color: 'color',
+    text: 'text',
+    textinput: 'textinput',
+    file: 'file',
+    directory: 'directory',
+    group: 'group',
+  };
+  return map[type] || 'text';
+}
+
+/**
+ * 下载对象为 JSON 文件
+ */
+export function downloadJsonFile(data: unknown, filename: string): void {
+  const json = JSON.stringify(data, null, '\t');
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }

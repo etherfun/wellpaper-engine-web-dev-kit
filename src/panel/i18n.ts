@@ -71,6 +71,31 @@ export interface PanelMessages {
   conditionNotMet: string;
   noCondition: string;
   missingTransTitle: string;
+
+  // 文件/目录选择器
+  browse: string;
+  selectFile: string;
+  selectDirectory: string;
+  clearFile: string;
+
+  // 属性编辑
+  addProperty: string;
+  editProperty: string;
+  deleteProperty: string;
+  exportJson: string;
+  save: string;
+  cancel: string;
+  confirmDelete: string;
+  propertyKey: string;
+  propertyType: string;
+  propertyValue: string;
+  propertyOrder: string;
+  propertyOptions: string;
+  propertyCondition: string;
+  editPropertyTitle: string;
+  addPropertyTitle: string;
+  jsonExported: string;
+  addOption: string;
 }
 
 const DICT_EN: PanelMessages = {
@@ -131,6 +156,29 @@ const DICT_EN: PanelMessages = {
   conditionNotMet: 'Condition not met, hidden from user',
   noCondition: 'No condition',
   missingTransTitle: 'Missing translation: "{key}" → falls back to key name',
+
+  browse: 'Browse',
+  selectFile: 'Select File',
+  selectDirectory: 'Select Directory',
+  clearFile: 'Clear',
+
+  addProperty: '+ Add Property',
+  editProperty: 'Edit',
+  deleteProperty: 'Del',
+  exportJson: '⬇ Export JSON',
+  save: 'Save',
+  cancel: 'Cancel',
+  confirmDelete: 'Delete "{key}"?',
+  propertyKey: 'Key',
+  propertyType: 'Type',
+  propertyValue: 'Default',
+  propertyOrder: 'Order',
+  propertyOptions: 'Options',
+  propertyCondition: 'Condition',
+  editPropertyTitle: 'Edit Property',
+  addPropertyTitle: 'Add Property',
+  jsonExported: 'JSON exported — check your downloads',
+  addOption: '+ Add',
 };
 
 const DICT_ZH: PanelMessages = {
@@ -191,6 +239,29 @@ const DICT_ZH: PanelMessages = {
   conditionNotMet: '条件未满足，用户隐藏',
   noCondition: '无条件限制',
   missingTransTitle: '缺失翻译: "{key}" → 回退到键名',
+
+  browse: '浏览',
+  selectFile: '选择文件',
+  selectDirectory: '选择目录',
+  clearFile: '清除',
+
+  addProperty: '+ 添加配置项',
+  editProperty: '编辑',
+  deleteProperty: '删除',
+  exportJson: '⬇ 导出 JSON',
+  save: '保存',
+  cancel: '取消',
+  confirmDelete: '删除 "{key}"？',
+  propertyKey: '键名',
+  propertyType: '类型',
+  propertyValue: '默认值',
+  propertyOrder: '排序',
+  propertyOptions: '选项',
+  propertyCondition: '条件',
+  editPropertyTitle: '编辑配置项',
+  addPropertyTitle: '添加配置项',
+  jsonExported: 'JSON 已导出 — 请查看下载文件夹',
+  addOption: '+ 添加',
 };
 
 /** 根据浏览器语言选择字典 */
