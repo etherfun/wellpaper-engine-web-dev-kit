@@ -5,271 +5,238 @@
  *   1. 从 project.json 读取属性默认值，首次推送（模拟 WE 启动）
  *   2. 模拟 setPaused / setResume（含 JS 逻辑暂停）
  *   3. 模拟 FPS 变化 → applyGeneralProperties
+ *
+ * 注意：所有副作用（定时器劫持、CSS 注入、initTimer）都延迟到
+ * install() 调用时才执行，避免在模块 import 时污染宿主 window。
  */
 
-import type { InternalState } from './types';
-
-// =============================================================
-// 暂停 JS 逻辑 — 劫持 requestAnimationFrame / setInterval / setTimeout
-// =============================================================
-
-/** 原始的定时器函数 */
-const _origRaf = window.requestAnimationFrame.bind(window);
-const _origSetInterval = window.setInterval.bind(window);
-const _origSetTimeout = window.setTimeout.bind(window);
-const _origClearInterval = window.clearInterval.bind(window);
-const _origClearTimeout = window.clearTimeout.bind(window);
-const _origCancelRaf = window.cancelAnimationFrame.bind(window);
-
-/** 暂停时积累的 RAF 回调队列 */
-let _pausedRafQueue: Array<{ cb: FrameRequestCallback; id: number }> = [];
-let _rafIdCounter = 0;
-
-/** 暂停时积累的 setTimeout 回调 */
-let _pausedTimeoutQueue: Array<{
-  id: number;
-  cb: (...args: any[]) => void;
-  delay: number;
-  elapsed: number;
-}> = [];
-let _timeoutIdCounter = 0;
-
-/** 暂停时积累的 setInterval 回调 */
-let _pausedIntervalQueue: Array<{
-  id: number;
-  cb: (...args: any[]) => void;
-  delay: number;
-  elapsed: number;
-}> = [];
-let _intervalIdCounter = 0;
-
-/**
- * 安装劫持的定时器（仅在首次调用时执行一次）。
- * 此后通过 pauseJsTimers / resumeJsTimers 控制停/启。
- */
-let _jsTimerHooked = false;
-let _jsPaused = false;
-
-function installJsTimerHooks(): void {
-  if (_jsTimerHooked) return;
-  _jsTimerHooked = true;
-
-  const w = window as any;
-
-  w.requestAnimationFrame = function (cb: FrameRequestCallback): number {
-    if (_jsPaused) {
-      const id = --_rafIdCounter;
-      _pausedRafQueue.push({ cb, id });
-      return id;
-    }
-    return _origRaf(cb);
-  };
-
-  w.cancelAnimationFrame = function (id: number) {
-    if (_jsPaused) {
-      _pausedRafQueue = _pausedRafQueue.filter(q => q.id !== id);
-      return;
-    }
-    _origCancelRaf(id);
-  };
-
-  w.setTimeout = function (cb: (...args: any[]) => void, delay?: number, ...args: any[]): number {
-    if (_jsPaused) {
-      const id = --_timeoutIdCounter;
-      _pausedTimeoutQueue.push({ id, cb, delay: delay ?? 0, elapsed: 0 });
-      return id;
-    }
-    return _origSetTimeout(cb, delay, ...args);
-  };
-
-  w.clearTimeout = function (id: number) {
-    if (_jsPaused) {
-      _pausedTimeoutQueue = _pausedTimeoutQueue.filter(q => q.id !== id);
-      return;
-    }
-    _origClearTimeout(id);
-  };
-
-  w.setInterval = function (cb: (...args: any[]) => void, delay?: number, ...args: any[]): number {
-    if (_jsPaused) {
-      const id = --_intervalIdCounter;
-      _pausedIntervalQueue.push({ id, cb, delay: delay ?? 0, elapsed: 0 });
-      return id;
-    }
-    return _origSetInterval(cb, delay, ...args);
-  };
-
-  w.clearInterval = function (id: number) {
-    if (_jsPaused) {
-      _pausedIntervalQueue = _pausedIntervalQueue.filter(q => q.id !== id);
-      return;
-    }
-    _origClearInterval(id);
-  };
-}
-
-function pauseJsTimers(): void {
-  _jsPaused = true;
-  // 暴露全局暂停标记供 dispatchAudioFrame 检查
-  (window as any).__weLifecyclePaused = true;
-}
-
-function resumeJsTimers(): void {
-  _jsPaused = false;
-  (window as any).__weLifecyclePaused = false;
-
-  // 放行积累的 RAF 回调
-  const rafQueue = _pausedRafQueue;
-  _pausedRafQueue = [];
-  for (const item of rafQueue) {
-    _origRaf(item.cb);
-  }
-
-  // 放行积累的 setTimeout
-  const toQueue = _pausedTimeoutQueue;
-  _pausedTimeoutQueue = [];
-  for (const item of toQueue) {
-    _origSetTimeout(item.cb, item.delay);
-  }
-
-  // 放行积累的 setInterval
-  const ivQueue = _pausedIntervalQueue;
-  _pausedIntervalQueue = [];
-  for (const item of ivQueue) {
-    _origSetInterval(item.cb, item.delay);
-  }
-}
-
-// =============================================================
-// CSS 暂停
-// =============================================================
+import type { InternalState, LifecycleMockController } from './types';
 
 const PAUSE_STYLE_ID = '__we_pause_animation';
 const PAUSE_INLINE_MARKER = '__we_paused_inline';
+const LIFECYCLE_PAUSED_FLAG = '__weLifecyclePaused';
 
-function isPauseable(el: Element): boolean {
+type AnyWindow = Window & {
+  requestAnimationFrame: (cb: FrameRequestCallback) => number;
+  cancelAnimationFrame: (id: number) => void;
+  setTimeout: (cb: (...args: unknown[]) => void, delay?: number, ...args: unknown[]) => number;
+  clearTimeout: (id: number) => void;
+  setInterval: (cb: (...args: unknown[]) => void, delay?: number, ...args: unknown[]) => number;
+  clearInterval: (id: number) => void;
+};
+
+interface TimerQueueItem {
+  id: number;
+  cb: (...args: unknown[]) => void;
+  delay: number;
+}
+
+interface RafQueueItem {
+  id: number;
+  cb: FrameRequestCallback;
+}
+
+interface JsTimerHooks {
+  pause: () => void;
+  resume: () => void;
+  installed: boolean;
+}
+
+/**
+ * 安装全局定时器劫持（仅一次）。
+ * 后续通过 pause()/resume() 控制是否拦截。
+ */
+function installJsTimerHooks(): JsTimerHooks {
+  const w = window as unknown as AnyWindow;
+  const origRaf = w.requestAnimationFrame.bind(window);
+  const origSetTimeout = w.setTimeout.bind(window);
+  const origClearTimeout = w.clearTimeout.bind(window);
+  const origSetInterval = w.setInterval.bind(window);
+  const origClearInterval = w.clearInterval.bind(window);
+  const origCancelRaf = w.cancelAnimationFrame.bind(window);
+
+  let jsPaused = false;
+  const pausedRaf: RafQueueItem[] = [];
+  const pausedTimeouts: TimerQueueItem[] = [];
+  const pausedIntervals: TimerQueueItem[] = [];
+  let rafCounter = 0;
+  let timerCounter = 0;
+
+  w.requestAnimationFrame = (cb: FrameRequestCallback): number => {
+    if (jsPaused) {
+      const id = --rafCounter;
+      pausedRaf.push({ id, cb });
+      return id;
+    }
+    return origRaf(cb);
+  };
+  w.cancelAnimationFrame = (id: number): void => {
+    if (jsPaused) {
+      const idx = pausedRaf.findIndex((q) => q.id === id);
+      if (idx >= 0) pausedRaf.splice(idx, 1);
+      return;
+    }
+    origCancelRaf(id);
+  };
+
+  w.setTimeout = (cb: (...args: unknown[]) => void, delay?: number): number => {
+    if (jsPaused) {
+      const id = --timerCounter;
+      pausedTimeouts.push({ id, cb, delay: delay ?? 0 });
+      return id;
+    }
+    return origSetTimeout(cb, delay);
+  };
+  w.clearTimeout = (id: number): void => {
+    if (jsPaused) {
+      const idx = pausedTimeouts.findIndex((q) => q.id === id);
+      if (idx >= 0) pausedTimeouts.splice(idx, 1);
+      return;
+    }
+    origClearTimeout(id);
+  };
+
+  w.setInterval = (cb: (...args: unknown[]) => void, delay?: number): number => {
+    if (jsPaused) {
+      const id = --timerCounter;
+      pausedIntervals.push({ id, cb, delay: delay ?? 0 });
+      return id;
+    }
+    return origSetInterval(cb, delay);
+  };
+  w.clearInterval = (id: number): void => {
+    if (jsPaused) {
+      const idx = pausedIntervals.findIndex((q) => q.id === id);
+      if (idx >= 0) pausedIntervals.splice(idx, 1);
+      return;
+    }
+    origClearInterval(id);
+  };
+
+  return {
+    pause(): void {
+      jsPaused = true;
+      (window as unknown as Record<string, unknown>)[LIFECYCLE_PAUSED_FLAG] = true;
+    },
+    resume(): void {
+      jsPaused = false;
+      (window as unknown as Record<string, unknown>)[LIFECYCLE_PAUSED_FLAG] = false;
+      const rafQueue = pausedRaf.splice(0, pausedRaf.length);
+      for (const item of rafQueue) origRaf(item.cb);
+      const toQueue = pausedTimeouts.splice(0, pausedTimeouts.length);
+      for (const item of toQueue) origSetTimeout(item.cb, item.delay);
+      const ivQueue = pausedIntervals.splice(0, pausedIntervals.length);
+      for (const item of ivQueue) origSetInterval(item.cb, item.delay);
+    },
+    installed: true,
+  };
+}
+
+function isPauseable(el: Element): el is HTMLElement | SVGElement {
   return el instanceof HTMLElement || el instanceof SVGElement;
 }
 
 function applyPauseStyles(): HTMLStyleElement | null {
   document.documentElement.classList.add('wpxPausePseudoAnimationAll');
 
-  const existing = document.getElementById(PAUSE_STYLE_ID);
-  if (!existing) {
-    const style = document.createElement('style');
-    style.id = PAUSE_STYLE_ID;
-    style.textContent = `.wpxPausePseudoAnimationAll * { animation-play-state: paused !important; }`;
-    document.head.appendChild(style);
+  let styleEl = document.getElementById(PAUSE_STYLE_ID) as HTMLStyleElement | null;
+  if (!styleEl) {
+    styleEl = document.createElement('style');
+    styleEl.id = PAUSE_STYLE_ID;
+    styleEl.textContent = `.wpxPausePseudoAnimationAll * { animation-play-state: paused !important; }`;
+    document.head.appendChild(styleEl);
   }
 
-  const all = document.querySelectorAll('*');
-  for (const el of all) {
+  for (const el of document.querySelectorAll('*')) {
     if (isPauseable(el)) {
-      (el as HTMLElement).style.animationPlayState = 'paused';
-      (el as any)[PAUSE_INLINE_MARKER] = true;
+      el.style.animationPlayState = 'paused';
+      (el as unknown as Record<string, unknown>)[PAUSE_INLINE_MARKER] = true;
     }
   }
 
-  return document.getElementById(PAUSE_STYLE_ID) as HTMLStyleElement | null;
+  return styleEl;
 }
 
 function removePauseStyles(styleEl?: HTMLStyleElement | null): void {
   document.documentElement.classList.remove('wpxPausePseudoAnimationAll');
-
-  const el = styleEl ?? document.getElementById(PAUSE_STYLE_ID);
+  const el = styleEl ?? (document.getElementById(PAUSE_STYLE_ID) as HTMLStyleElement | null);
   if (el) el.remove();
 
-  const all = document.querySelectorAll('*');
-  for (const el of all) {
-    if ((el as any)[PAUSE_INLINE_MARKER]) {
-      if (isPauseable(el)) {
-        (el as HTMLElement).style.animationPlayState = '';
-      }
-      delete (el as any)[PAUSE_INLINE_MARKER];
+  for (const el of document.querySelectorAll('*')) {
+    const marker = (el as unknown as Record<string, unknown>)[PAUSE_INLINE_MARKER];
+    if (marker && isPauseable(el)) {
+      el.style.animationPlayState = '';
+      delete (el as unknown as Record<string, unknown>)[PAUSE_INLINE_MARKER];
     }
   }
 }
 
-export function createLifecycleMock(state: InternalState) {
+export function createLifecycleMock(state: InternalState): LifecycleMockController {
   let isPaused = false;
   let pauseStyleEl: HTMLStyleElement | null = null;
 
-  function install() {
-    const w = window as any;
+  // 立即安装定时器劫持（不依赖 lifecycle 是否启用）
+  const hooks = installJsTimerHooks();
 
-    // 安装 JS 定时器劫持（始终安装，停启用由 pauseJsTimers/resumeJsTimers 控制）
-    installJsTimerHooks();
+  // 800ms 后推送 project.json 默认值
+  const initTimer = setTimeout(() => {
+    const w = window as unknown as {
+      wallpaperPropertyListener?: { applyUserProperties?: (props: Record<string, unknown>) => void };
+      __weDevKitDefaults?: Record<string, unknown>;
+    };
+    const listener = w.wallpaperPropertyListener;
+    if (!listener || typeof listener.applyUserProperties !== 'function') return;
 
-    // 1. 从 window.__weDevKitDefaults（build-dev.mjs 注入）或 project.json 加载默认值
-    const initTimer = _origSetTimeout(() => {
-      const listener = w.wallpaperPropertyListener;
-      if (!listener || typeof listener.applyUserProperties !== 'function') return;
+    const properties = w.__weDevKitDefaults;
+    if (properties && Object.keys(properties).length > 0) {
+      listener.applyUserProperties(properties);
+      console.log(`[WE Dev Kit] Lifecycle: pushed ${Object.keys(properties).length} defaults`);
+    } else {
+      listener.applyUserProperties({});
+      console.log('[WE Dev Kit] Lifecycle: fallback empty push');
+    }
+  }, 800);
 
-      let properties = w.__weDevKitDefaults;
+  state.onDestroy(() => {
+    clearTimeout(initTimer);
+    removePauseStyles(pauseStyleEl);
+    delete (window as unknown as Record<string, unknown>)[LIFECYCLE_PAUSED_FLAG];
+  });
 
-      if (properties && Object.keys(properties).length > 0) {
-        listener.applyUserProperties(properties);
-        console.log(
-          `[WE Dev Kit] Lifecycle: pushed ${Object.keys(properties).length} defaults`
-        );
-      } else {
-        listener.applyUserProperties({});
-        console.log('[WE Dev Kit] Lifecycle: fallback empty push');
-      }
-    }, 800);
-
-    state.onDestroy(() => {
-      _origClearTimeout(initTimer);
-      removePauseStyles(pauseStyleEl);
-      delete (window as any).__weLifecyclePaused;
-    });
-
-    console.log('[WE Dev Kit] LifecycleMock installed (JS timer hooks active)');
-  }
-
-  install();
+  console.log('[WE Dev Kit] LifecycleMock installed (JS timer hooks active)');
 
   return {
-    /** 模拟 WE 暂停壁纸 — 暂停 CSS + JS 全逻辑（RAF / setTimeout / setInterval） */
-    simulatePause() {
+    simulatePause(): void {
       if (isPaused) return;
       isPaused = true;
-
-      // Task 0-1: 暂停 CSS 注入 + 全元素内联暂停
       pauseStyleEl = applyPauseStyles();
-
-      // 暂停 JS 逻辑：后续 RAF / setTimeout / setInterval 将被拦截不再执行
-      pauseJsTimers();
-
-      const listener = (window as any).wallpaperPropertyListener;
+      hooks.pause();
+      const listener = (window as unknown as { wallpaperPropertyListener?: { setPaused?: (b: boolean) => void } })
+        .wallpaperPropertyListener;
       if (listener && typeof listener.setPaused === 'function') {
         listener.setPaused(true);
       }
       console.log('[WE Dev Kit] Lifecycle: simulatePause (CSS + JS paused)');
     },
 
-    /** 模拟 WE 恢复壁纸 — 清理暂停样式 + 恢复 JS 逻辑 */
-    simulateResume() {
+    simulateResume(): void {
       if (!isPaused) return;
       isPaused = false;
-
-      // Task 0-1: 清理暂停样式
       removePauseStyles(pauseStyleEl);
       pauseStyleEl = null;
-
-      // 恢复 JS 逻辑：放行积累的 RAF / setTimeout / setInterval
-      resumeJsTimers();
-
-      const listener = (window as any).wallpaperPropertyListener;
+      hooks.resume();
+      const listener = (window as unknown as { wallpaperPropertyListener?: { setPaused?: (b: boolean) => void } })
+        .wallpaperPropertyListener;
       if (listener && typeof listener.setPaused === 'function') {
         listener.setPaused(false);
       }
       console.log('[WE Dev Kit] Lifecycle: simulateResume (JS resumed)');
     },
 
-    /** 模拟 FPS 限制变化 */
-    simulateFpsChange(fps: number) {
-      const listener = (window as any).wallpaperPropertyListener;
+    simulateFpsChange(fps: number): void {
+      const listener = (window as unknown as {
+        wallpaperPropertyListener?: { applyGeneralProperties?: (p: { fps: number }) => void };
+      }).wallpaperPropertyListener;
       if (listener && typeof listener.applyGeneralProperties === 'function') {
         listener.applyGeneralProperties({ fps });
         console.log(`[WE Dev Kit] Lifecycle: FPS changed to ${fps}`);

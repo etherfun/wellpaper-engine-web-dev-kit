@@ -11,78 +11,61 @@
  * 三种模式混合 + 帧间平滑，约 30fps。
  */
 
-import type { AudioMode, InternalState } from './types';
+import type { AudioMode, AudioSimulatorController, InternalState } from './types';
 
-interface AudioSimulatorOptions {
+export interface AudioSimulatorOptions {
   amplitude: number;
   bassBoost: number;
   variationSpeed: number;
   frameRate: number;
 }
 
+const FRAME_SIZE = 128;
+const CHANNEL_SIZE = 64;
+const FADE_FACTOR = 0.12;
+
 export function createAudioSimulator(
   callback: (data: Float32Array) => void,
   opts: AudioSimulatorOptions,
   state: InternalState
-) {
-  const amplitude = opts.amplitude;
-  const bassBoost = opts.bassBoost;
-  const speed = opts.variationSpeed;
-  const intervalMs = Math.max(16, Math.round(1000 / opts.frameRate));
-
+): AudioSimulatorController {
   let running = false;
   let timerId: ReturnType<typeof setInterval> | null = null;
   let mode: AudioMode = 'mixed';
-  let currentAmplitude = amplitude;
-  let currentBassBoost = bassBoost;
-  let currentSpeed = speed;
+  let currentAmplitude = opts.amplitude;
+  let currentBassBoost = opts.bassBoost;
+  let currentSpeed = opts.variationSpeed;
+  let fadeTarget = currentAmplitude;
 
-  // Task 0: 渐进淡出/淡入
-  let _fadeTarget = currentAmplitude;
-  const FADE_FACTOR = 0.12; // 每帧向目标靠近 12%，约 24 帧(800ms) 达到 95%
-
-  // 上一帧数据（用于帧间平滑）
-  const prevFrame = new Float32Array(128);
-  // 相位累加器（正弦波用）
+  const intervalMs = Math.max(16, Math.round(1000 / opts.frameRate));
+  const prevFrame = new Float32Array(FRAME_SIZE);
   let phase = 0;
 
-  // ---- 频谱生成 ----
-
   function generateFrame(): Float32Array {
-    const frame = new Float32Array(128);
+    const frame = new Float32Array(FRAME_SIZE);
     const dt = 0.03 * currentSpeed;
-
     phase += dt;
 
     for (let ch = 0; ch < 2; ch++) {
-      const offset = ch * 64;
-
-      for (let i = 0; i < 64; i++) {
+      const offset = ch * CHANNEL_SIZE;
+      for (let i = 0; i < CHANNEL_SIZE; i++) {
         let value = 0;
 
         if (mode === 'beats' || mode === 'mixed') {
-          // 低频 beats: 正弦波 + 随机脉冲
           if (i < 16) {
             const beatFreq = 1.0 + i * 0.5;
             const beatPhase = phase * beatFreq;
             const pulse = Math.random() > 0.92 ? 0.6 + Math.random() * 0.4 : 0;
             value += (Math.sin(beatPhase) * 0.5 + 0.5) * 0.5 + pulse * 0.5;
-            // bass boost
             if (i < 8) value *= currentBassBoost;
-          }
-          // 中频旋律
-          else if (i < 40) {
+          } else if (i < 40) {
             const melFreq = 2.0 + (i - 16) * 0.3;
             const melPhase = phase * melFreq;
             value += (Math.sin(melPhase) * 0.3 + 0.3) * 0.4;
-            // 偶尔旋律脉冲
             if (Math.random() > 0.98) {
               value += 0.3 + Math.random() * 0.3;
             }
-          }
-          // 高频
-          else {
-            // 白噪声 + 小脉冲模拟镲片
+          } else {
             value += Math.random() * 0.15;
             if (Math.random() > 0.96) {
               value += 0.2 + Math.random() * 0.3;
@@ -91,7 +74,6 @@ export function createAudioSimulator(
         }
 
         if (mode === 'melody' || mode === 'mixed') {
-          // 旋律模式：更平滑的正弦波组合
           if (i < 16) {
             const f1 = 1.0 + i * 0.3;
             value += (Math.sin(phase * f1) * 0.3 + 0.3) * 0.3;
@@ -103,47 +85,38 @@ export function createAudioSimulator(
           }
         }
 
-        // 裁剪到 [0, 1]
         value = Math.min(1, Math.max(0, value * currentAmplitude));
-
         frame[offset + i] = value;
       }
     }
 
     // 帧间平滑：70% 上一帧 + 30% 新帧
-    for (let i = 0; i < 128; i++) {
-      frame[i] = prevFrame[i] * 0.7 + frame[i] * 0.3;
-      prevFrame[i] = frame[i];
+    for (let i = 0; i < FRAME_SIZE; i++) {
+      const smoothed = prevFrame[i]! * 0.7 + frame[i]! * 0.3;
+      frame[i] = smoothed;
+      prevFrame[i] = smoothed;
     }
 
     return frame;
   }
 
-  // ---- 生命周期 ----
-
-  function tick() {
+  function tick(): void {
     if (!running) return;
-
-    // Task 0: 渐进淡出/淡入 — 每帧向目标逼近
-    if (Math.abs(currentAmplitude - _fadeTarget) > 0.001) {
-      currentAmplitude += (_fadeTarget - currentAmplitude) * FADE_FACTOR;
+    if (Math.abs(currentAmplitude - fadeTarget) > 0.001) {
+      currentAmplitude += (fadeTarget - currentAmplitude) * FADE_FACTOR;
     } else {
-      currentAmplitude = _fadeTarget;
+      currentAmplitude = fadeTarget;
     }
-
-    const frame = generateFrame();
-    callback(frame);
+    callback(generateFrame());
   }
 
-  return {
+  const controller: AudioSimulatorController = {
     start() {
       if (running) return;
       running = true;
-      // 初始帧用较平滑的值
-      for (let i = 0; i < 128; i++) {
+      for (let i = 0; i < FRAME_SIZE; i++) {
         prevFrame[i] = 0.1 + Math.random() * 0.2;
       }
-      // 立即推一帧
       tick();
       timerId = setInterval(tick, intervalMs);
       console.log(`[WE Dev Kit] AudioSimulator started (${opts.frameRate}fps, mode=${mode})`);
@@ -158,32 +131,36 @@ export function createAudioSimulator(
       console.log('[WE Dev Kit] AudioSimulator stopped');
     },
 
-    /** 渐进淡出/淡入到目标振幅（Task 0） */
-    fadeTo(target: number, _durationMs?: number) {
-      _fadeTarget = Math.max(0, Math.min(1, target));
+    pushFrame() {
+      callback(generateFrame());
     },
+
     setAmplitude(v: number) {
       currentAmplitude = Math.max(0, Math.min(1, v));
-      _fadeTarget = currentAmplitude; // 即时设置不渐变
+      fadeTarget = currentAmplitude;
     },
+
+    fadeTo(target: number, _durationMs?: number) {
+      fadeTarget = Math.max(0, Math.min(1, target));
+    },
+
     setBassBoost(v: number) {
       currentBassBoost = Math.max(0, Math.min(3, v));
     },
+
     setVariationSpeed(v: number) {
       currentSpeed = Math.max(0.1, Math.min(5, v));
     },
+
     setMode(m: AudioMode) {
       mode = m;
     },
+
     get isRunning() {
       return running;
     },
-    // 手动推一帧（用于 devPanel 手动触发）
-    pushFrame() {
-      const frame = generateFrame();
-      callback(frame);
-    },
   };
-}
 
-export type AudioSimulator = ReturnType<typeof createAudioSimulator>;
+  state.onDestroy(() => controller.stop());
+  return controller;
+}

@@ -7,10 +7,11 @@
  *   - userDirectoryFilesAddedOrChanged — 文件目录变更
  *   - userDirectoryFilesRemoved — 文件删除
  *
- * v2: 改用 Object.defineProperty 的 setter，当项目代码后续整个替换
- *     wallpaperPropertyListener 对象时自动补齐缺失方法。
+ * 用 Object.defineProperty 的 setter 拦截后续赋值，
+ * 项目替换 listener 时自动合并缺失方法。
  */
 
+import { interceptWindowSetter } from './utils/windowPatching';
 import type { InternalState } from './types';
 
 const MOCK_METHODS = [
@@ -20,101 +21,63 @@ const MOCK_METHODS = [
   'userDirectoryFilesRemoved',
 ] as const;
 
-/** 创建 setPaused 默认实现（触发自定义事件） */
-function createDefaultSetPaused() {
-  return function (isPaused: boolean) {
-    console.log(`[WE Dev Kit] setPaused(${isPaused})`);
-    const evt = new CustomEvent('__we_paused_change', {
-      detail: { paused: isPaused },
-    });
-    window.dispatchEvent(evt);
+type MockMethodName = (typeof MOCK_METHODS)[number];
+type MockListener = Record<MockMethodName, (...args: unknown[]) => void> & {
+  __weDevKitMocked?: boolean;
+};
+
+function createDefaultSetPaused(): (...args: unknown[]) => void {
+  return (isPaused: unknown) => {
+    const paused = Boolean(isPaused);
+    console.log(`[WE Dev Kit] setPaused(${paused})`);
+    window.dispatchEvent(new CustomEvent('__we_paused_change', { detail: { paused } }));
   };
 }
 
-/** 创建 applyGeneralProperties 默认实现 */
-function createDefaultApplyGeneralProperties() {
-  return function (properties: Record<string, any>) {
-    if (properties.fps !== undefined) {
-      console.log(`[WE Dev Kit] applyGeneralProperties: fps=${properties.fps}`);
+function createDefaultApplyGeneralProperties(): (...args: unknown[]) => void {
+  return (properties: unknown) => {
+    const props = properties as { fps?: number } | undefined;
+    if (props?.fps !== undefined) {
+      console.log(`[WE Dev Kit] applyGeneralProperties: fps=${props.fps}`);
     }
   };
 }
 
-/** 创建 userDirectoryFilesAddedOrChanged 默认实现 */
-function createDefaultFilesAddedOrChanged() {
-  return function (propertyName: string, changedFiles: string[]) {
-    console.log(
-      `[WE Dev Kit] userDirectoryFilesAddedOrChanged: ${propertyName} (${changedFiles.length} files)`
-    );
+function createDefaultFilesAddedOrChanged(): (...args: unknown[]) => void {
+  return (propertyName: unknown, changedFiles: unknown) => {
+    const files = Array.isArray(changedFiles) ? changedFiles : [];
+    console.log(`[WE Dev Kit] userDirectoryFilesAddedOrChanged: ${String(propertyName)} (${files.length} files)`);
   };
 }
 
-/** 创建 userDirectoryFilesRemoved 默认实现 */
-function createDefaultFilesRemoved() {
-  return function (propertyName: string, removedFiles: string[]) {
-    console.log(
-      `[WE Dev Kit] userDirectoryFilesRemoved: ${propertyName} (${removedFiles.length} files)`
-    );
+function createDefaultFilesRemoved(): (...args: unknown[]) => void {
+  return (propertyName: unknown, removedFiles: unknown) => {
+    const files = Array.isArray(removedFiles) ? removedFiles : [];
+    console.log(`[WE Dev Kit] userDirectoryFilesRemoved: ${String(propertyName)} (${files.length} files)`);
   };
 }
 
-type MockMethodName = (typeof MOCK_METHODS)[number];
-
-const DEFAULT_IMPLS: Record<MockMethodName, () => (...args: any[]) => void> = {
+const DEFAULT_IMPLS: Record<MockMethodName, () => (...args: unknown[]) => void> = {
   setPaused: createDefaultSetPaused,
   applyGeneralProperties: createDefaultApplyGeneralProperties,
   userDirectoryFilesAddedOrChanged: createDefaultFilesAddedOrChanged,
   userDirectoryFilesRemoved: createDefaultFilesRemoved,
 };
 
-/** 确保 listener 对象包含所有 mock 方法，保留项目已有的实现 */
-function ensureMockMethods(obj: any): void {
+function ensureMockMethods(obj: unknown): MockListener {
+  const target = (obj && typeof obj === 'object' ? obj : {}) as MockListener;
   for (const methodName of MOCK_METHODS) {
-    if (typeof obj[methodName] !== 'function') {
-      obj[methodName] = DEFAULT_IMPLS[methodName]();
+    if (typeof target[methodName] !== 'function') {
+      target[methodName] = DEFAULT_IMPLS[methodName]();
     }
   }
-  (obj as any).__weDevKitMocked = true;
+  target.__weDevKitMocked = true;
+  return target;
 }
 
-/**
- * 补齐 window.wallpaperPropertyListener 中缺失的方法。
- * 使用 Object.defineProperty 的 setter 拦截项目后续的全部替换操作，
- * 确保 setPaused / applyGeneralProperties 等方法始终存在。
- */
-export function installPropertyMock(state: InternalState): void {
-  const w = window as any;
-  const initial = w.wallpaperPropertyListener || {};
-
-  // 首次补齐
-  ensureMockMethods(initial);
-  let _stored = initial;
-
-  // 用 setter 拦截后续赋值
-  Object.defineProperty(w, 'wallpaperPropertyListener', {
-    get() {
-      return _stored;
-    },
-    set(val: any) {
-      if (val && val !== _stored) {
-        // 复制项目的新方法（如 applyUserProperties），再补齐缺失方法
-        const merged: any = { ...val };
-        ensureMockMethods(merged);
-        _stored = merged;
-        console.log('[WE Dev Kit] propertyMock: project replaced listener, auto-patched setPaused');
-      } else if (val) {
-        _stored = val;
-      }
-    },
-    configurable: true,
-    enumerable: true,
-  });
-
-  state.onDestroy(() => {
-    try {
-      delete w.wallpaperPropertyListener;
-    } catch {}
-  });
-
+export function installPropertyMock(state: InternalState): { patch: { restore: () => void } } {
+  const patch = interceptWindowSetter<MockListener>('wallpaperPropertyListener', ensureMockMethods);
+  state.onDestroy(() => patch.restore());
   console.log('[WE Dev Kit] propertyMock installed (v2 — persistent patch)');
+  return { patch };
 }
