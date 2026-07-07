@@ -214,6 +214,7 @@ export interface PropertyTranslationStatus {
 /**
  * 配置项控制器
  * 查询配置项可见性、翻译键丢失状态、获取属性定义列表。
+ * 支持添加/编辑/删除属性定义（影响内存中的缓存，可使用 saveToJsonFile 导出）。
  */
 export interface PropertiesController {
   /** 获取单个属性的定义 */
@@ -234,28 +235,100 @@ export interface PropertiesController {
   getCurrentValues(): Record<string, unknown>;
   /** 从 project.json 重新加载属性定义 */
   reloadProperties(): Promise<void>;
+  /** 添加一个新的属性定义 */
+  addProperty(def: PropertyDefInput): ProjectPropertyDef;
+  /** 更新一个已有属性的定义 */
+  updateProperty(key: string, def: Partial<PropertyDefInput>): ProjectPropertyDef | undefined;
+  /** 删除一个属性定义 */
+  removeProperty(key: string): boolean;
+  /** 注册属性变更通知回调（面板使用） */
+  _onChange?: (props: ProjectPropertyDef[]) => void;
 }
 
-// ---- 内部状态类型（不导出） ----
+/** 添加/编辑属性时的输入类型 */
+export interface PropertyDefInput {
+  key: string;
+  type: ProjectPropertyDef['type'];
+  value?: unknown;
+  text?: string;
+  displayName?: string;
+  min?: number;
+  max?: number;
+  /** slider 步进值 */
+  step?: number;
+  /** slider 小类精度 */
+  precision?: number;
+  /** slider 是否允许小数 */
+  fraction?: boolean;
+  /** file/directory 的文件类型过滤（如 "video"） */
+  fileType?: string;
+  /** directory 加载模式（"ondemand" | "fetchall"） */
+  mode?: string;
+  options?: { value: unknown; label: string }[];
+  condition?: string;
+  order?: number;
+  /** WE project.json 中的 index 字段，影响 UI 渲染排序 */
+  index?: number;
+}
 
-/** WE 属性描述（来自 project.json general.properties） */
+export type PropertyType =
+  | 'bool'
+  | 'slider'
+  | 'combo'
+  | 'color'
+  | 'text'
+  | 'textinput'
+  | 'file'
+  | 'directory'
+  | 'group';
+
 export interface ProjectPropertyDef {
   key: string;
-  type: 'bool' | 'slider' | 'combo' | 'color' | 'text' | 'textinput' | 'file' | 'directory' | 'group';
+  type: PropertyType;
   value: unknown;
-  /** i18n key（project.json 中的 text 字段，如 "ui_rgb_show"） */
+  /** project.json 中的 text 字段（可以是 i18n key 如 "ui_rgb_show"，也可以是直接的中文描述如 "颜色配置项"） */
   text?: string;
-  /** 从 localization 解析出的可读名称，如 "RGB灯光" */
+  /** 从 localization 解析出的可读名称，如 "RGB灯光"；无匹配时回退到 text 字段本身 */
   displayName?: string;
-  /** 当前语言的翻译是否存在（false 表示用 key 当 fallback） */
+  /** 当前语言的翻译是否存在（false 表示用 text 当 fallback） */
   missingTranslation?: boolean;
   /** 语言的 i18n key（combo 选项的 label） */
   optionLabels?: Record<string, string>;
   min?: number;
   max?: number;
+  /** slider 步进值 */
+  step?: number;
+  /** slider 小类精度 */
+  precision?: number;
+  /** slider 是否允许小数 */
+  fraction?: boolean;
+  /** file/directory 的文件类型过滤（如 "video"） */
+  fileType?: string;
+  /** directory 加载模式（"ondemand" | "fetchall"） */
+  mode?: string;
   options?: { value: unknown; label: string }[];
   condition?: string;
   order?: number;
+  /** WE project.json 中的 index 字段，影响 UI 渲染排序 */
+  index?: number;
+}
+
+/** project.json 中属性定义的原始结构 */
+export interface RawPropertyDef {
+  type: string;
+  value?: unknown;
+  text?: string;
+  min?: number;
+  max?: number;
+  step?: number;
+  precision?: number;
+  fraction?: boolean;
+  fileType?: string;
+  mode?: string;
+  options?: { value: unknown; label: string }[];
+  condition?: string;
+  order?: number;
+  index?: number;
 }
 
 export interface InternalState {
@@ -263,8 +336,9 @@ export interface InternalState {
   audioSimulator?: AudioSimulatorController;
   mediaMock?: MediaMockController;
   panel?: PanelController;
+  rgbMock?: RgbMockController;
   cleanupFns: (() => void)[];
-  isRgbPluginLoaded: boolean;  // 补充缺失字段
+  isRgbPluginLoaded: boolean;
   onDestroy: (fn: () => void) => void;
 }
 
@@ -277,7 +351,7 @@ export interface AudioSimulatorController {
   setBassBoost(v: number): void;
   setVariationSpeed(v: number): void;
   setMode(mode: AudioMode): void;
-  isRunning: boolean;
+  readonly isRunning: boolean;
 }
 
 export type AudioMode = 'beats' | 'melody' | 'mixed';
@@ -295,9 +369,28 @@ export interface MediaMockController {
   /** 获取当前播放位置（秒） */
   getPosition(): number;
   getCurrentTrack(): MockTrack;
-  currentIndex: number;
-  playbackState: PlaybackState;
-  tracks: MockTrack[];
+  readonly currentIndex: number;
+  readonly playbackState: PlaybackState;
+  readonly tracks: MockTrack[];
+}
+
+export interface RgbMockController {
+  getLastFrame(): RgbFrameData | null;
+  getDecodedImageData(): ImageData | null;
+  getPalette(): { color: string; ratio: number }[];
+  onFrame(cb: RgbFrameCallback): () => void;
+  simulateFrame(width?: number, height?: number, pixelData?: number[]): void;
+}
+
+export interface LifecycleMockController {
+  simulatePause(): void;
+  simulateResume(): void;
+  simulateFpsChange(fps: number): void;
+  readonly isPaused: boolean;
+}
+
+export interface PropertyMockController {
+  readonly patch: { restore: () => void };
 }
 
 export interface RgbFrameData {
@@ -318,15 +411,22 @@ export interface PanelController {
   hide(): void;
   toggle(): void;
   destroy(): void;
-  isVisible: boolean;
+  readonly isVisible: boolean;
+  updateRgbFrame(frame: RgbFrameData): void;
+  refreshProperties(props: ProjectPropertyDef[]): void;
 }
 
 export interface ResolvedAudioConfig extends Required<AudioConfig> {}
 export interface ResolvedMediaConfig extends Required<MediaConfig> {}
 export interface ResolvedPanelConfig extends Required<PanelConfig> {}
 
-export interface RequiredConfig extends Required<DevKitConfig> {
+export interface RequiredConfig {
+  enabled: boolean;
+  autoDetect: boolean;
   audio: ResolvedAudioConfig;
   media: ResolvedMediaConfig;
+  properties: boolean;
+  rgb: boolean;
+  lifecycle: boolean;
   panel: ResolvedPanelConfig;
 }
