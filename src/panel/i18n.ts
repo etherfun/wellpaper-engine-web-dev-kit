@@ -96,6 +96,35 @@ export interface PanelMessages {
   addPropertyTitle: string;
   jsonExported: string;
   addOption: string;
+  propertyText: string;
+  propertyDisplayName: string;
+  propertyIndex: string;
+  propertyConditionHelp: string;
+  typeChangeConfirm: string;
+  continueChange: string;
+  cancelChange: string;
+  textNotInLocalization: string;
+  textInLocalization: string;
+  addToLocalization: string;
+  typeSpecific: string;
+  /** localizable default value labels (for combo/file etc) */
+  groupSectionTitle: string;
+  defaultLabel: string;
+  sliderRange: string;
+  minLabel: string;
+  maxLabel: string;
+  stepLabel: string;
+  precisionLabel: string;
+  fractionLabel: string;
+  videoModeLabel: string;
+  ondemandModeLabel: string;
+  addRowLabel: string;
+  labelLabel: string;
+  valueLabel: string;
+  noOptionsLabel: string;
+  keyRequiredAlert: string;
+  fieldRequired: string;
+  sectionLocalization: string;
 }
 
 const DICT_EN: PanelMessages = {
@@ -179,6 +208,34 @@ const DICT_EN: PanelMessages = {
   addPropertyTitle: 'Add Property',
   jsonExported: 'JSON exported — check your downloads',
   addOption: '+ Add',
+  propertyText: 'i18n key',
+  propertyDisplayName: 'Display name',
+  propertyIndex: 'Index',
+  propertyConditionHelp: 'e.g. propA.value == 1 && propB.value > 0',
+  typeChangeConfirm: 'Changing the type will clear the current default value. Continue?',
+  continueChange: 'Continue',
+  cancelChange: 'Cancel',
+  textNotInLocalization: '⚠ Not found in current localization',
+  textInLocalization: '✓ Found in localization',
+  addToLocalization: '+ Add',
+  typeSpecific: 'Type-specific',
+  groupSectionTitle: '── Group ──',
+  defaultLabel: 'Default',
+  sliderRange: 'Range',
+  minLabel: 'Min',
+  maxLabel: 'Max',
+  stepLabel: 'Step',
+  precisionLabel: 'Precision',
+  fractionLabel: 'Fractional',
+  videoModeLabel: 'Video mode',
+  ondemandModeLabel: 'On-demand mode',
+  addRowLabel: '+ Add',
+  labelLabel: 'Label',
+  valueLabel: 'Value',
+  noOptionsLabel: '(no options)',
+  keyRequiredAlert: 'Key is required',
+  fieldRequired: 'required',
+  sectionLocalization: '▶ Localization',
 };
 
 const DICT_ZH: PanelMessages = {
@@ -234,6 +291,34 @@ const DICT_ZH: PanelMessages = {
   translationMissing: '⚠ 翻译丢失',
   translationOk: '翻译正常',
   visibleStat: '可见',
+  propertyText: 'i18n 键名',
+  propertyDisplayName: '显示名称',
+  propertyIndex: '索引',
+  propertyConditionHelp: '例：propA.value == 1 && propB.value > 0',
+  typeChangeConfirm: '切换类型会清空当前默认值，确定继续吗？',
+  continueChange: '继续',
+  cancelChange: '取消',
+  textNotInLocalization: '⚠ 当前翻译字典中未找到',
+  textInLocalization: '✓ 已收录到翻译字典',
+  addToLocalization: '+ 添加',
+  typeSpecific: '类型专属',
+  groupSectionTitle: '── 分组 ──',
+  defaultLabel: '默认值',
+  sliderRange: '范围',
+  minLabel: '最小',
+  maxLabel: '最大',
+  stepLabel: '步进',
+  precisionLabel: '精度',
+  fractionLabel: '允许小数',
+  videoModeLabel: '视频模式',
+  ondemandModeLabel: '点播模式',
+  addRowLabel: '+ 添加',
+  labelLabel: '显示',
+  valueLabel: '值',
+  noOptionsLabel: '（无选项）',
+  keyRequiredAlert: '键名不能为空',
+  fieldRequired: '必填',
+  sectionLocalization: '▶ 翻译',
   hiddenStat: '隐藏',
   conditionMet: '条件满足，用户可见',
   conditionNotMet: '条件未满足，用户隐藏',
