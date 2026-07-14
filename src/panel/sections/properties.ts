@@ -4,6 +4,7 @@
 
 import type { ProjectPropertyDef, PropertyType } from '../../types';
 import { getPanelMessages } from '../i18n';
+import { localeDisplayName } from '../i18n';
 import { weColorToHex, hexToWeColor } from '../../utils/color';
 import { showPropertyModal, type PropertyEditorSaveHandler } from '../modal/propertyEditor';
 import { evaluateAllConditions, type VisibilityMap } from '../conditionEvaluator';
@@ -28,7 +29,8 @@ export function populatePropertiesSection(
   cb: PanelCallbacks,
   appliedLanguage: string,
   availableLanguages: string[],
-  onLanguageSwitch?: (lang: string) => void
+  onLanguageSwitch?: (lang: string) => void,
+  allLocalizations?: Record<string, Record<string, string>>
 ): PanelPropertiesRefresher {
   // ---- 语言切换行 ----
   const langRow = createRow();
@@ -40,11 +42,11 @@ export function populatePropertiesSection(
   langRow.appendChild(langIcon);
 
   const langSelect = document.createElement('select');
-  langSelect.style.cssText = 'font-size:10px;padding:1px 4px;flex:none;width:70px;';
+  langSelect.style.cssText = 'font-size:10px;padding:1px 4px;flex:none;width:120px;';
   for (const lang of availableLanguages) {
     const opt = document.createElement('option');
     opt.value = lang;
-    opt.textContent = lang;
+    opt.textContent = localeDisplayName(lang);
     if (lang === appliedLanguage) opt.selected = true;
     langSelect.appendChild(opt);
   }
@@ -63,6 +65,61 @@ export function populatePropertiesSection(
     langRow.appendChild(langLabel);
   }
 
+  // 添加语言下拉
+  const addLangSelect = document.createElement('select');
+  addLangSelect.style.cssText = 'font-size:10px;padding:1px 2px;flex:none;width:105px;margin-left:2px;background:#1a1a1a;border:1px solid #444;color:#e0e0e0;border-radius:3px;outline:none;cursor:pointer;';
+  // 插入一个占位选项
+  const placeholderOpt = document.createElement('option');
+  placeholderOpt.value = '';
+  placeholderOpt.textContent = '添加语言…';
+  placeholderOpt.disabled = true;
+  placeholderOpt.selected = true;
+  addLangSelect.appendChild(placeholderOpt);
+  // 所有 WE 语言代码（按 localeDisplayName 排序）
+  const allLocales = [
+    'ar-sa','be-by','bg-bg','cs-cz','da-dk','de-de','el-gr','en-us',
+    'es-es','eu-es','fa-ir','fi-fi','fr-fr','he-il','hu-hu','id-id',
+    'it-it','ja-jp','ko-kr','lt-lt','nb-no','nl-nl','pl-pl','pt-br',
+    'pt-pt','ro-ro','ru-ru','sk-sk','sl-si','sv-se','th-th','tr-tr',
+    'uk-ua','vi-vn','zh-chs','zh-cht',
+  ];
+  // 已经存在的语言排到后面
+  const sortedLocales = [...allLocales].sort((a, b) => {
+    const aExists = availableLanguages.includes(a) ? 1 : 0;
+    const bExists = availableLanguages.includes(b) ? 1 : 0;
+    return aExists - bExists;
+  });
+  for (const code of sortedLocales) {
+    const opt = document.createElement('option');
+    opt.value = code;
+    opt.textContent = localeDisplayName(code);
+    if (availableLanguages.includes(code)) opt.disabled = true;
+    addLangSelect.appendChild(opt);
+  }
+  addLangSelect.addEventListener('change', () => {
+    const langCode = addLangSelect.value;
+    if (!langCode) return;
+    addLangSelect.value = '';
+    if (availableLanguages.includes(langCode)) {
+      langSelect.value = langCode;
+      if (onLanguageSwitch) onLanguageSwitch(langCode);
+      return;
+    }
+    const opt = document.createElement('option');
+    opt.value = langCode;
+    opt.textContent = localeDisplayName(langCode);
+    opt.selected = true;
+    langSelect.appendChild(opt);
+    availableLanguages.push(langCode);
+    // 禁用添加下拉中对应的选项
+    const sourceOpt = addLangSelect.querySelector(`option[value="${langCode}"]`) as HTMLOptionElement | null;
+    if (sourceOpt) sourceOpt.disabled = true;
+    if (onLanguageSwitch) onLanguageSwitch(langCode);
+    renderProps(filterState);
+    console.log(`[WE Dev Kit] Language added: "${langCode}"`);
+  });
+  langRow.appendChild(addLangSelect);
+
   let showKeys = false;
   const toggleBtn = document.createElement('button');
   toggleBtn.className = 'btn';
@@ -76,14 +133,17 @@ export function populatePropertiesSection(
     renderProps(filterState);
   });
   langRow.appendChild(toggleBtn);
-  container.appendChild(langRow);
 
-  // ---- 搜索框 ----
+  // ---- 操作工具栏（sticky 固定） ----
+  const propToolbar = document.createElement('div');
+  propToolbar.className = 'prop-toolbar';
+  propToolbar.appendChild(langRow);
+
   const searchInput = document.createElement('input');
   searchInput.className = 'prop-search';
   searchInput.type = 'text';
   searchInput.placeholder = getPanelMessages().searchPlaceholder;
-  container.appendChild(searchInput);
+  propToolbar.appendChild(searchInput);
 
   // ---- 过滤行 ----
   const filterRow = document.createElement('div');
@@ -104,14 +164,25 @@ export function populatePropertiesSection(
 
   const typeSelect = document.createElement('select');
   typeSelect.style.marginLeft = '4px';
-  appendOption(typeSelect, 'all', 'All Types', true);
+  appendOption(typeSelect, 'all', getPanelMessages().typeFilterAll, true);
   const typeSet = new Set<string>();
   for (const p of props) {
     if (p.type && p.type !== 'group') typeSet.add(p.type);
   }
+  const typeLabelMap: Record<string, string> = {
+    bool: getPanelMessages().typeBool,
+    slider: getPanelMessages().typeSlider,
+    combo: getPanelMessages().typeCombo,
+    color: getPanelMessages().typeColor,
+    text: getPanelMessages().typeText,
+    textinput: getPanelMessages().typeTextinput,
+    file: getPanelMessages().typeFile,
+    directory: getPanelMessages().typeDirectory,
+    group: getPanelMessages().typeGroup,
+  };
   for (const t of ['bool', 'slider', 'combo', 'color', 'text', 'textinput', 'file', 'directory']) {
     if (typeSet.has(t)) {
-      appendOption(typeSelect, t, t.charAt(0).toUpperCase() + t.slice(1));
+      appendOption(typeSelect, t, typeLabelMap[t] ?? t);
     }
   }
   filterRow.appendChild(typeSelect);
@@ -119,7 +190,7 @@ export function populatePropertiesSection(
   const visStats = document.createElement('span');
   visStats.className = 'vis-stats';
   filterRow.appendChild(visStats);
-  container.appendChild(filterRow);
+  propToolbar.appendChild(filterRow);
 
   // ---- 操作行 ----
   const actionRow = document.createElement('div');
@@ -131,19 +202,21 @@ export function populatePropertiesSection(
     const editorSave: PropertyEditorSaveHandler = (isNew, originalKey, def) => {
       applyEditorResult(isNew, originalKey, def);
     };
-    showPropertyModal(null, editorSave);
+    showPropertyModal(null, editorSave, allLocalizations, availableLanguages, cb.onSaveI18nTranslation);
   });
   actionRow.appendChild(addBtn);
 
   const exportBtn = document.createElement('button');
-  exportBtn.className = 'btn';
-  exportBtn.textContent = getPanelMessages().exportJson;
+  exportBtn.className = 'btn primary';
+  exportBtn.textContent = '💾 保存修改';
   exportBtn.addEventListener('click', () => {
-    const fn = (window as unknown as { __weDevKitExportJson?: () => void }).__weDevKitExportJson;
+    const fn = (window as unknown as { __weDevKitSaveProps?: () => void }).__weDevKitSaveProps;
     if (typeof fn === 'function') fn();
   });
   actionRow.appendChild(exportBtn);
-  container.appendChild(actionRow);
+  propToolbar.appendChild(actionRow);
+
+  container.appendChild(propToolbar);
 
   // ---- 属性列表 ----
   const listEl = document.createElement('div');
@@ -179,6 +252,7 @@ export function populatePropertiesSection(
           displayName: def.displayName || def.text || def.key,
           missingTranslation: false,
           order: def.order ?? 9999,
+          index: def.index,
           condition: def.condition,
           options: def.options,
           min: def.min,
@@ -209,6 +283,7 @@ export function populatePropertiesSection(
         existing.fraction = def.fraction;
         existing.fileType = def.fileType;
         existing.mode = def.mode;
+        existing.index = def.index;
         recomputeMissing(existing);
       }
     }
@@ -256,6 +331,19 @@ export function populatePropertiesSection(
     }
     visStats.textContent = `${visibleCount}${getPanelMessages().visibleStat} / ${hiddenCount}${getPanelMessages().hiddenStat}`;
 
+    // 统计共享的 i18n 键（text 被多个属性引用）
+    const textCounts = new Map<string, number>();
+    for (const prop of props) {
+      const t = prop.text;
+      if (t && t !== prop.key) {
+        textCounts.set(t, (textCounts.get(t) ?? 0) + 1);
+      }
+    }
+    const sharedTextKeys = new Set<string>();
+    for (const [t, count] of textCounts) {
+      if (count > 1) sharedTextKeys.add(t);
+    }
+
     for (const prop of props) {
       if (lowerFilter && !prop.key.toLowerCase().includes(lowerFilter)) continue;
 
@@ -277,11 +365,11 @@ export function populatePropertiesSection(
         continue;
       }
 
-      listEl.appendChild(createPropRow(prop, isVis));
+      listEl.appendChild(createPropRow(prop, isVis, sharedTextKeys));
     }
   }
 
-  function createPropRow(prop: ProjectPropertyDef, isVis: boolean): HTMLElement {
+  function createPropRow(prop: ProjectPropertyDef, isVis: boolean, sharedTextKeys?: Set<string>): HTMLElement {
     const row = document.createElement('div');
     row.className = 'prop-row' + (isVis ? '' : ' is-hidden');
     row.style.position = 'relative';
@@ -320,7 +408,10 @@ export function populatePropertiesSection(
       row.appendChild(spacer);
     }
 
-    // 键名
+    // 键名 + i18n 键行
+    const keyCol = document.createElement('div');
+    keyCol.className = 'prop-key-col';
+
     const keyEl = document.createElement('span');
     keyEl.className = 'prop-key';
     const labelText = showKeys ? prop.key : (prop.displayName || prop.key);
@@ -328,7 +419,30 @@ export function populatePropertiesSection(
     keyEl.title = showKeys
       ? (prop.displayName && prop.displayName !== prop.key ? `${prop.key} (${prop.displayName})` : prop.key)
       : `${prop.key}${prop.displayName && prop.displayName !== prop.key ? ` (${prop.displayName})` : ''}${prop.condition ? `\ncondition: ${prop.condition}` : ''}`;
-    row.appendChild(keyEl);
+    keyCol.appendChild(keyEl);
+
+    // i18n 键副标题（当 text 与 key 不同时显示）
+    if (prop.text && prop.text !== prop.key) {
+      const i18nRow = document.createElement('div');
+      i18nRow.className = 'prop-i18n-row';
+
+      if (sharedTextKeys?.has(prop.text)) {
+        const sharedBadge = document.createElement('span');
+        sharedBadge.className = 'prop-i18n-shared-badge';
+        sharedBadge.textContent = '⛁';
+        sharedBadge.title = `i18n 键 "${prop.text}" 被多个配置项共享`;
+        i18nRow.appendChild(sharedBadge);
+      }
+
+      const i18nLabel = document.createElement('span');
+      i18nLabel.className = 'prop-i18n-key';
+      i18nLabel.textContent = prop.text;
+      i18nLabel.title = `翻译键: ${prop.text}`;
+      i18nRow.appendChild(i18nLabel);
+      keyCol.appendChild(i18nRow);
+    }
+
+    row.appendChild(keyCol);
 
     // 控件
     const control = createPropControl(prop);
@@ -342,7 +456,7 @@ export function populatePropertiesSection(
       e.stopPropagation();
       showPropertyModal(prop, (isNew, originalKey, def) => {
         applyEditorResult(isNew, originalKey, def);
-      });
+      }, allLocalizations, availableLanguages, cb.onSaveI18nTranslation);
     });
     row.appendChild(editBtn);
 
@@ -375,7 +489,7 @@ export function populatePropertiesSection(
         checkbox.type = 'checkbox';
         checkbox.checked = Boolean(prop.value);
         checkbox.addEventListener('change', () => {
-          pushPropertyChange(prop.key, checkbox.checked);
+          prop.value = checkbox.checked;
         });
         control.appendChild(checkbox);
         break;
@@ -398,12 +512,10 @@ export function populatePropertiesSection(
         numInput.style.width = '55px';
         numInput.value = precision > 0 ? Number(prop.value ?? 50).toFixed(precision) : String(prop.value ?? 50);
 
-        const pushValue = debounce((v: number) => pushPropertyChange(prop.key, v), 300);
-
         slider.addEventListener('input', () => {
           const val = parseFloat(slider.value);
           numInput.value = precision > 0 ? val.toFixed(precision) : String(val);
-          pushValue(val);
+          prop.value = val;
         });
         numInput.addEventListener('change', () => {
           const v = parseFloat(numInput.value);
@@ -411,7 +523,7 @@ export function populatePropertiesSection(
             const clamped = Math.max(prop.min ?? 0, Math.min(prop.max ?? 100, v));
             slider.value = String(clamped);
             numInput.value = precision > 0 ? clamped.toFixed(precision) : String(clamped);
-            pushValue(clamped);
+            prop.value = clamped;
           }
         });
 
@@ -433,7 +545,7 @@ export function populatePropertiesSection(
         }
         select.addEventListener('change', () => {
           const numVal = Number(select.value);
-          pushPropertyChange(prop.key, Number.isNaN(numVal) ? select.value : numVal);
+          prop.value = Number.isNaN(numVal) ? select.value : numVal;
         });
         control.appendChild(select);
         break;
@@ -449,7 +561,7 @@ export function populatePropertiesSection(
         hexLabel.textContent = colorPicker.value;
         colorPicker.addEventListener('input', () => {
           hexLabel.textContent = colorPicker.value;
-          pushPropertyChange(prop.key, hexToWeColor(colorPicker.value));
+          prop.value = hexToWeColor(colorPicker.value);
         });
         colorRow.appendChild(colorPicker);
         colorRow.appendChild(hexLabel);
@@ -467,8 +579,7 @@ export function populatePropertiesSection(
         const textInput = document.createElement('input');
         textInput.type = 'text';
         textInput.value = String(prop.value ?? '');
-        const push = debounce((v: string) => pushPropertyChange(prop.key, v), 400);
-        textInput.addEventListener('input', () => push(textInput.value));
+        textInput.addEventListener('input', () => { prop.value = textInput.value; });
         control.appendChild(textInput);
         break;
       }
@@ -549,8 +660,6 @@ export function populatePropertiesSection(
     propValues[key] = value;
     const prop = props.find((p) => p.key === key);
     if (prop) prop.value = value;
-    cb.onPropertyChange(key, value);
-    renderProps(filterState);
   }
 
   // ---- 监听过滤变化 ----

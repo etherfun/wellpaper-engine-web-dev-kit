@@ -431,6 +431,7 @@ export function createWeDevKit(options?: DevKitConfig): DevKitInstance {
   // 10. 控制面板
   let panelController: ReturnType<typeof createPanel> | undefined;
   if (isPanelEnabled(config)) {
+    let audioDisableTimer: ReturnType<typeof setTimeout> | null = null;
     panelController = createPanel({
       config,
       state,
@@ -438,11 +439,31 @@ export function createWeDevKit(options?: DevKitConfig): DevKitInstance {
       mediaMock,
       lifecycleMock,
       setAudioEnabled: (enabled: boolean) => {
-        audioEnabledRef.current = enabled;
-        if (audioSim) {
-          audioSim.fadeTo(enabled ? config.audio.amplitude : 0, 800);
+        // 如果淡出定时器还在运行，取消它（用户快速切换场景）
+        if (audioDisableTimer !== null) {
+          clearTimeout(audioDisableTimer);
+          audioDisableTimer = null;
         }
-        console.log(`[WE Dev Kit] Audio ${enabled ? 'enabled' : 'disabled'} (from panel, fade ${enabled ? 'in' : 'out'})`);
+
+        if (enabled) {
+          audioEnabledRef.current = true;
+          if (audioSim) {
+            audioSim.setAmplitude(0); // 从 0 开始淡入
+            audioSim.fadeTo(config.audio.amplitude, 800);
+          }
+          console.log('[WE Dev Kit] Audio enabled (fade in)');
+        } else {
+          // 先淡出到 0，完成后再阻止分发
+          if (audioSim) {
+            audioSim.fadeTo(0, 800);
+          }
+          audioDisableTimer = setTimeout(() => {
+            audioEnabledRef.current = false;
+            audioDisableTimer = null;
+            console.log('[WE Dev Kit] Audio disabled (dispatch stopped)');
+          }, 1000); // 800ms 淡出 + 200ms 余量
+          console.log('[WE Dev Kit] Audio disabling (fade out…)');
+        }
       },
     });
 

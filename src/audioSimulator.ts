@@ -104,6 +104,11 @@ export function createAudioSimulator(
     if (!running) return;
     if (Math.abs(currentAmplitude - fadeTarget) > 0.001) {
       currentAmplitude += (fadeTarget - currentAmplitude) * FADE_FACTOR;
+      // 淡出到零时，接近阈值后直接归零，并清空平滑缓冲
+      if (fadeTarget === 0 && currentAmplitude < 0.02) {
+        currentAmplitude = 0;
+        prevFrame.fill(0);
+      }
     } else {
       currentAmplitude = fadeTarget;
     }

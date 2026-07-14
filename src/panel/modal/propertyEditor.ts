@@ -6,7 +6,7 @@
  */
 
 import type { PropertyDefInput, ProjectPropertyDef, PropertyType } from '../../types';
-import { getPanelMessages } from '../i18n';
+import { getPanelMessages, localeDisplayName } from '../i18n';
 import { weColorToHex, hexToWeColor } from '../../utils/color';
 import { createDraggableHost } from '../../utils/dom';
 
@@ -28,12 +28,28 @@ const TYPE_OPTIONS: PropertyType[] = [
   'group',
 ];
 
+/** 驼峰/帕斯卡 → 蛇形 (例: PWLineDensity → pw_line_density) */
+function toSnakeCase(str: string): string {
+  return str
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')  // consecutive caps → split
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')     // lower→upper → split
+    .toLowerCase();
+}
+
+/** 从 property key 自动生成 i18n 翻译键 */
+function autoI18nKey(key: string): string {
+  if (!key.trim()) return '';
+  const snake = toSnakeCase(key.trim());
+  // 以 ui_ 开头则直接返回蛇形，否则加 ui_ 前缀
+  return snake.startsWith('ui_') ? snake : 'ui_' + snake;
+}
+
 interface SliderFields {
   min: HTMLInputElement;
   max: HTMLInputElement;
   step: HTMLInputElement;
   precision: HTMLInputElement;
-  fraction: HTMLInputElement;
+  fraction: HTMLElement;
 }
 
 interface FileFields {
@@ -47,7 +63,10 @@ interface DirectoryFields {
 
 export function showPropertyModal(
   prop: ProjectPropertyDef | null,
-  onSave: PropertyEditorSaveHandler
+  onSave: PropertyEditorSaveHandler,
+  allLocalizations?: Record<string, Record<string, string>>,
+  availableLanguages?: string[],
+  onSaveI18nTranslation?: (i18nKey: string, translations: Record<string, string>) => void
 ): void {
   const isNew = prop === null;
 
@@ -109,10 +128,21 @@ export function showPropertyModal(
   // 类型
   const typeSelect = document.createElement('select');
   typeSelect.className = 'prop-modal-select';
+  const typeLabelMap: Record<string, string> = {
+    bool: getPanelMessages().typeBool,
+    slider: getPanelMessages().typeSlider,
+    combo: getPanelMessages().typeCombo,
+    color: getPanelMessages().typeColor,
+    text: getPanelMessages().typeText,
+    textinput: getPanelMessages().typeTextinput,
+    file: getPanelMessages().typeFile,
+    directory: getPanelMessages().typeDirectory,
+    group: getPanelMessages().typeGroup,
+  };
   for (const t of TYPE_OPTIONS) {
     const opt = document.createElement('option');
     opt.value = t;
-    opt.textContent = t.charAt(0).toUpperCase() + t.slice(1);
+    opt.textContent = typeLabelMap[t] ?? (t.charAt(0).toUpperCase() + t.slice(1));
     if (prop?.type === t) opt.selected = true;
     typeSelect.appendChild(opt);
   }
@@ -140,7 +170,7 @@ export function showPropertyModal(
       for (const v of ['true', 'false']) {
         const opt = document.createElement('option');
         opt.value = v;
-        opt.textContent = v.charAt(0).toUpperCase() + v.slice(1);
+        opt.textContent = v === 'true' ? getPanelMessages().typeTrue : getPanelMessages().typeFalse;
         if (prop?.value !== undefined && String(prop.value).toLowerCase() === v) opt.selected = true;
         sel.appendChild(opt);
       }
@@ -238,6 +268,14 @@ export function showPropertyModal(
   orderInput.value = String(prop?.order ?? 9999);
   addField(getPanelMessages().propertyOrder, orderInput);
 
+  const indexInput = document.createElement('input');
+  indexInput.type = 'number';
+  indexInput.min = '0';
+  indexInput.step = '1';
+  indexInput.value = prop?.index !== undefined ? String(prop.index) : '';
+  indexInput.placeholder = '(可选)';
+  addField(getPanelMessages().propertyIndex, indexInput);
+
   const condInput = document.createElement('input');
   condInput.type = 'text';
   condInput.value = prop?.condition ?? '';
@@ -263,10 +301,17 @@ export function showPropertyModal(
     typeSpecificWrap.innerHTML = '';
     const t = typeSelect.value;
     if (t === 'slider') {
-      typeSpecificLabel.textContent = 'Slider';
+      typeSpecificLabel.textContent = getPanelMessages().propertySliderLabel;
+      // 行 1: Min / Max / Step / Prec 标签
       const labelRow = document.createElement('div');
       labelRow.style.cssText = 'display:flex;gap:6px;width:100%;font-size:10px;color:#888;';
-      for (const lbl of ['Min', 'Max', 'Step', 'Prec', '']) {
+      const labels = [
+        getPanelMessages().propertyMin,
+        getPanelMessages().propertyMax,
+        getPanelMessages().propertyStep,
+        getPanelMessages().propertyPrecision,
+      ];
+      for (const lbl of labels) {
         const s = document.createElement('span');
         s.textContent = lbl;
         s.style.width = '56px';
@@ -274,20 +319,31 @@ export function showPropertyModal(
         labelRow.appendChild(s);
       }
       typeSpecificWrap.appendChild(labelRow);
+      // 行 2: Min / Max / Step / Prec 输入
       const inputRow = document.createElement('div');
       inputRow.style.cssText = 'display:flex;gap:6px;align-items:center;width:100%;';
-      for (const el of [sliderFields.min, sliderFields.max, sliderFields.step, sliderFields.precision, sliderFields.fraction]) {
+      for (const el of [sliderFields.min, sliderFields.max, sliderFields.step, sliderFields.precision]) {
         inputRow.appendChild(el);
       }
       typeSpecificWrap.appendChild(inputRow);
+      // 行 3: Frac 复选框独占一行（标签在构建时通过 getPanelMessages 设置）
+      const fracRow = document.createElement('div');
+      fracRow.style.cssText = 'display:flex;align-items:center;gap:6px;width:100%;';
+      const fracLabel = sliderFields.fraction;
+      // 设置复选框文本
+      const textNode = Array.from(fracLabel.childNodes).find(n => n.nodeType === Node.TEXT_NODE);
+      if (textNode) textNode.textContent = getPanelMessages().propertyFraction;
+      else fracLabel.appendChild(document.createTextNode(getPanelMessages().propertyFraction));
+      fracRow.appendChild(fracLabel);
+      typeSpecificWrap.appendChild(fracRow);
     } else if (t === 'file') {
-      typeSpecificLabel.textContent = 'File';
+      typeSpecificLabel.textContent = getPanelMessages().propertyFileLabel;
       const row = document.createElement('div');
       row.style.cssText = 'display:flex;gap:6px;align-items:center;flex-wrap:wrap;';
       row.appendChild(wrapCheckbox('视频模式 (Video)', fileFields.video));
       typeSpecificWrap.appendChild(row);
     } else if (t === 'directory') {
-      typeSpecificLabel.textContent = 'Directory';
+      typeSpecificLabel.textContent = getPanelMessages().propertyDirectoryLabel;
       const row = document.createElement('div');
       row.style.cssText = 'display:flex;gap:6px;align-items:center;flex-wrap:wrap;';
       row.appendChild(wrapCheckbox('视频模式 (Video)', dirFields.video));
@@ -385,6 +441,128 @@ export function showPropertyModal(
     optsRow.style.display = typeSelect.value === 'combo' ? '' : 'none';
   });
 
+  // ---- i18n 翻译键（text） — 编辑 key 时自动生成 ----
+  const i18nInput = document.createElement('input');
+  i18nInput.type = 'text';
+  i18nInput.value = prop?.text ?? (isNew ? '' : '');
+  i18nInput.placeholder = '留空则使用键名自动生成';
+  // i18nInput 放入翻译区内部，不单独 addField
+
+  // i18n 键自动生成提示行
+  const i18nHintRow = document.createElement('div');
+  i18nHintRow.className = 'prop-modal-i18n-hint';
+  i18nHintRow.style.cssText = 'margin:2px 0 0 0;font-size:10px;color:#666;padding-left:8px;display:none;';
+
+  function updateI18nHint(): void {
+    const autoKey = autoI18nKey(keyInput.value);
+    const current = i18nInput.value.trim();
+    if (current && current !== autoKey) {
+      i18nHintRow.textContent = `↳ 自动生成: ${autoKey}`;
+      i18nHintRow.style.display = '';
+    } else {
+      i18nHintRow.style.display = 'none';
+    }
+  }
+
+  let autoGenI18n = true;
+  i18nInput.addEventListener('focus', () => { autoGenI18n = false; });
+  i18nInput.addEventListener('blur', () => {
+    if (!i18nInput.value.trim()) autoGenI18n = true;
+  });
+  keyInput.addEventListener('input', () => {
+    if (autoGenI18n) {
+      i18nInput.value = autoI18nKey(keyInput.value);
+    }
+    updateI18nHint();
+    setTimeout(updateTranslationVisibility, 0);
+  });
+  i18nInput.addEventListener('input', () => { updateI18nHint(); updateTranslationVisibility(); });
+  if (!isNew && prop?.text) {
+    i18nInput.value = prop.text;
+    autoGenI18n = false;
+    updateI18nHint();
+  } else if (isNew && keyInput.value) {
+    i18nInput.value = autoI18nKey(keyInput.value);
+  }
+
+  // ---- 翻译编辑区 ----
+  const transContainer = document.createElement('div');
+  transContainer.className = 'prop-modal-trans-section';
+  transContainer.style.display = 'none';
+  body.appendChild(transContainer);
+
+  const transTitle = document.createElement('div');
+  transTitle.className = 'prop-modal-trans-header';
+  transTitle.textContent = '📖 翻译/本地化';
+  transContainer.appendChild(transTitle);
+
+  // 翻译键行
+  const i18nKeyRow = document.createElement('div');
+  i18nKeyRow.className = 'prop-modal-trans-row';
+  const i18nKeyLabel = document.createElement('span');
+  i18nKeyLabel.className = 'prop-modal-trans-label';
+  i18nKeyLabel.textContent = getPanelMessages().propertyI18nKey;
+  i18nKeyRow.appendChild(i18nKeyLabel);
+  i18nKeyRow.appendChild(i18nInput);
+  i18nInput.className = 'prop-modal-trans-input';
+  i18nInput.style.cssText += 'margin:0 8px 0 0;';
+  transContainer.appendChild(i18nKeyRow);
+  // 提示行紧跟翻译键下方
+  transContainer.appendChild(i18nHintRow);
+
+  // 语言行容器 — 用于 buildTranslations 重建
+  const transLangWrap = document.createElement('div');
+  transLangWrap.id = '__we_trans_lang_wrap';
+  transContainer.appendChild(transLangWrap);
+
+  const transRows: Record<string, HTMLInputElement> = {};
+
+  function buildTranslations(langs: string[], i18nKey: string): void {
+    transLangWrap.innerHTML = '';
+    Object.keys(transRows).forEach(k => delete transRows[k]);
+
+    if (!langs || langs.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'prop-modal-trans-empty';
+      empty.textContent = 'project.json に未定义通用章节 (general.localization)';
+      transLangWrap.appendChild(empty);
+      return;
+    }
+
+    for (const lang of langs) {
+      const row = document.createElement('div');
+      row.className = 'prop-modal-trans-row';
+
+      const label = document.createElement('span');
+      label.className = 'prop-modal-trans-label';
+      label.textContent = localeDisplayName(lang);
+      row.appendChild(label);
+
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'prop-modal-trans-input';
+      input.value = allLocalizations?.[lang]?.[i18nKey] ?? '';
+      input.placeholder = '(未翻译)';
+      row.appendChild(input);
+
+      transRows[lang] = input;
+      transLangWrap.appendChild(row);
+    }
+  }
+
+  function updateTranslationVisibility(): void {
+    if (availableLanguages && availableLanguages.length > 0) {
+      const key = i18nInput.value.trim();
+      buildTranslations(availableLanguages, key);
+      transContainer.style.display = '';
+    } else {
+      transContainer.style.display = 'none';
+    }
+  }
+
+  // 首次打开时初始化翻译区
+  setTimeout(updateTranslationVisibility, 0);
+
   // ---- 按钮 ----
   const btnRow = document.createElement('div');
   btnRow.className = 'prop-modal-btn-row';
@@ -458,7 +636,8 @@ export function showPropertyModal(
       sliderMaxVal = Number.isFinite(max) ? max : undefined;
       sliderStepVal = Number.isFinite(step) ? step : undefined;
       sliderPrecisionVal = Number.isFinite(prec) ? prec : undefined;
-      sliderFractionVal = sliderFields.fraction.checked || undefined;
+      const fracInput = sliderFields.fraction.querySelector('input');
+      sliderFractionVal = fracInput ? fracInput.checked : undefined;
     } else if (newType === 'file' || newType === 'directory') {
       if (fileFields.video.checked) fileTypeVal = 'video';
       if (newType === 'directory' && dirFields.ondemand.checked) modeVal = 'ondemand';
@@ -468,9 +647,10 @@ export function showPropertyModal(
       key: newKey,
       type: newType,
       value: defaultVal || undefined,
-      text: prop?.text || newKey,
+      text: i18nInput.value.trim() || newKey,
       displayName: prop?.displayName || prop?.text || newKey,
       order: newOrder,
+      index: indexInput.value ? parseInt(indexInput.value, 10) : undefined,
       condition: condInput.value.trim() || undefined,
       options,
       min: sliderMinVal,
@@ -483,6 +663,26 @@ export function showPropertyModal(
     };
 
     onSave(isNew, isNew ? null : prop!.key, def);
+
+    // 同步保存翻译
+    const i18nKey = i18nInput.value.trim();
+    if (onSaveI18nTranslation && i18nKey && availableLanguages && availableLanguages.length > 0) {
+      const translations: Record<string, string> = {};
+      let hasChanges = false;
+      for (const lang of availableLanguages) {
+        const input = transRows[lang];
+        if (input) {
+          const val = input.value.trim();
+          const orig = allLocalizations?.[lang]?.[i18nKey] ?? '';
+          if (val !== orig) hasChanges = true;
+          translations[lang] = val;
+        }
+      }
+      if (hasChanges) {
+        onSaveI18nTranslation(i18nKey, translations);
+      }
+    }
+
     destroy();
     host.remove();
   });
@@ -529,9 +729,9 @@ function buildSliderFields(prop: ProjectPropertyDef | null): SliderFields {
   fraction.type = 'checkbox';
   fraction.checked = prop?.fraction ?? false;
   fractionWrap.appendChild(fraction);
-  fractionWrap.appendChild(document.createTextNode('Frac'));
+  // 需要引入 getPanelMessages 给末尾的函数使用——已在模块顶部导入
 
-  return { min, max, step, precision, fraction };
+  return { min, max, step, precision, fraction: fractionWrap };
 }
 
 function buildFileFields(prop: ProjectPropertyDef | null): FileFields {

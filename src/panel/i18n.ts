@@ -87,11 +87,33 @@ export interface PanelMessages {
   cancel: string;
   confirmDelete: string;
   propertyKey: string;
+  propertyI18nKey: string;
   propertyType: string;
   propertyValue: string;
   propertyOrder: string;
+  propertyIndex: string;
   propertyOptions: string;
   propertyCondition: string;
+  propertyFraction: string;
+  propertyMin: string;
+  propertyMax: string;
+  propertyStep: string;
+  propertyPrecision: string;
+  propertySliderLabel: string;
+  propertyFileLabel: string;
+  propertyDirectoryLabel: string;
+  typeBool: string;
+  typeSlider: string;
+  typeCombo: string;
+  typeColor: string;
+  typeText: string;
+  typeTextinput: string;
+  typeFile: string;
+  typeDirectory: string;
+  typeGroup: string;
+  typeTrue: string;
+  typeFalse: string;
+  typeFilterAll: string;
   editPropertyTitle: string;
   addPropertyTitle: string;
   jsonExported: string;
@@ -170,11 +192,33 @@ const DICT_EN: PanelMessages = {
   cancel: 'Cancel',
   confirmDelete: 'Delete "{key}"?',
   propertyKey: 'Key',
+  propertyI18nKey: 'i18n Key',
   propertyType: 'Type',
   propertyValue: 'Default',
   propertyOrder: 'Order',
+  propertyIndex: 'Index',
   propertyOptions: 'Options',
   propertyCondition: 'Condition',
+  propertyFraction: 'Allow Fraction',
+  propertyMin: 'Min',
+  propertyMax: 'Max',
+  propertyStep: 'Step',
+  propertyPrecision: 'Precision',
+  propertySliderLabel: 'Slider',
+  propertyFileLabel: 'File',
+  propertyDirectoryLabel: 'Directory',
+  typeBool: 'Bool',
+  typeSlider: 'Slider',
+  typeCombo: 'Combo',
+  typeColor: 'Color',
+  typeText: 'Text',
+  typeTextinput: 'Text Input',
+  typeFile: 'File',
+  typeDirectory: 'Directory',
+  typeGroup: 'Group',
+  typeFilterAll: 'All Types',
+  typeTrue: 'True',
+  typeFalse: 'False',
   editPropertyTitle: 'Edit Property',
   addPropertyTitle: 'Add Property',
   jsonExported: 'JSON exported — check your downloads',
@@ -253,11 +297,33 @@ const DICT_ZH: PanelMessages = {
   cancel: '取消',
   confirmDelete: '删除 "{key}"？',
   propertyKey: '键名',
+  propertyI18nKey: '翻译键',
   propertyType: '类型',
   propertyValue: '默认值',
   propertyOrder: '排序',
+  propertyIndex: '索引',
   propertyOptions: '选项',
   propertyCondition: '条件',
+  propertyFraction: '允许小数',
+  propertyMin: '最小值',
+  propertyMax: '最大值',
+  propertyStep: '步进值',
+  propertyPrecision: '小数精度',
+  propertySliderLabel: '滑块',
+  propertyFileLabel: '文件',
+  propertyDirectoryLabel: '目录',
+  typeBool: '复选框',
+  typeSlider: '滑块',
+  typeCombo: '下拉菜单',
+  typeColor: '颜色',
+  typeText: '文本',
+  typeTextinput: '文本框',
+  typeFile: '文件',
+  typeDirectory: '目录',
+  typeGroup: '分组',
+  typeFilterAll: '全部类型',
+  typeTrue: '开启',
+  typeFalse: '关闭',
   editPropertyTitle: '编辑配置项',
   addPropertyTitle: '添加配置项',
   jsonExported: 'JSON 已导出 — 请查看下载文件夹',
@@ -269,6 +335,52 @@ export function resolvePanelMessages(fallback?: PanelLocale): PanelMessages {
   const lang = fallback ?? navigator.language;
   if (lang.toLowerCase().startsWith('zh')) return DICT_ZH;
   return DICT_EN;
+}
+
+/** Wallpaper Engine 语言代码 → 本地化显示名 */
+const LOCALE_NAMES: Record<string, string> = {
+  'ar-sa': 'العربية',
+  'be-by': 'Беларуская',
+  'bg-bg': 'Български',
+  'cs-cz': 'Čeština',
+  'da-dk': 'Dansk',
+  'de-de': 'Deutsch',
+  'el-gr': 'Ελληνικά',
+  'en-us': 'English',
+  'es-es': 'Español',
+  'eu-es': 'Euskara',
+  'fa-ir': 'فارسی',
+  'fi-fi': 'Suomi',
+  'fr-fr': 'Français',
+  'he-il': 'עברית',
+  'hu-hu': 'Magyar',
+  'id-id': 'Bahasa Indonesia',
+  'it-it': 'Italiano',
+  'ja-jp': '日本語',
+  'ko-kr': '한국어',
+  'lt-lt': 'Lietuvių',
+  'nb-no': 'Norsk Bokmål',
+  'nl-nl': 'Nederlands',
+  'pl-pl': 'Polski',
+  'pt-br': 'Português (Brasil)',
+  'pt-pt': 'Português (Portugal)',
+  'ro-ro': 'Română',
+  'ru-ru': 'Русский',
+  'sk-sk': 'Slovenčina',
+  'sl-si': 'Slovenščina',
+  'sv-se': 'Svenska',
+  'th-th': 'ไทย',
+  'tr-tr': 'Türkçe',
+  'uk-ua': 'Українська',
+  'vi-vn': 'Tiếng Việt',
+  'zh-chs': '简体中文',
+  'zh-cht': '繁體中文',
+};
+
+/** 获取语言代码的显示名（如 "zh-chs | 简体中文"） */
+export function localeDisplayName(code: string): string {
+  const name = LOCALE_NAMES[code];
+  return name ? `${code} | ${name}` : code;
 }
 
 // ---- 可变当前语言（避免 tsup 闭包重命名问题） ----

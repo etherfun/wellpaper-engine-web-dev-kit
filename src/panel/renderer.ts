@@ -70,7 +70,8 @@ export function renderPanel(
   appliedLanguage: string = 'en-us',
   availableLanguages: string[] = [],
   onLanguageSwitch?: (lang: string) => void,
-  messages?: PanelMessages
+  messages?: PanelMessages,
+  allLocalizations?: Record<string, Record<string, string>>
 ): PanelController {
   setPanelMessages(messages ?? resolvePanelMessages());
 
@@ -138,7 +139,8 @@ export function renderPanel(
     callbacks,
     appliedLanguage,
     availableLanguages,
-    onLanguageSwitch
+    onLanguageSwitch,
+    allLocalizations
   );
 
   // ---- 样式注入 ----
