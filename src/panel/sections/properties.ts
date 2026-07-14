@@ -71,7 +71,7 @@ export function populatePropertiesSection(
   // 插入一个占位选项
   const placeholderOpt = document.createElement('option');
   placeholderOpt.value = '';
-  placeholderOpt.textContent = '添加语言…';
+  placeholderOpt.textContent = getPanelMessages().addLangPlaceholder;
   placeholderOpt.disabled = true;
   placeholderOpt.selected = true;
   addLangSelect.appendChild(placeholderOpt);
@@ -208,7 +208,7 @@ export function populatePropertiesSection(
 
   const exportBtn = document.createElement('button');
   exportBtn.className = 'btn primary';
-  exportBtn.textContent = '💾 保存修改';
+  exportBtn.textContent = getPanelMessages().saveButton;
   exportBtn.addEventListener('click', () => {
     const fn = (window as unknown as { __weDevKitSaveProps?: () => void }).__weDevKitSaveProps;
     if (typeof fn === 'function') fn();

@@ -909,7 +909,8 @@ export const GLOBAL_MODAL_STYLES = `
   border-bottom: 1px solid #444;
 }
 .prop-opts-th {
-  flex: 1;
+  flex: 1 1 0;
+  min-width: 0;
   font-size: 10px;
   color: #888;
   padding: 3px 6px;
@@ -931,7 +932,8 @@ export const GLOBAL_MODAL_STYLES = `
   border-bottom: none;
 }
 .prop-opts-input {
-  flex: 1;
+  flex: 1 1 0;
+  min-width: 0;
   background: transparent !important;
   border: none !important;
   color: #e0e0e0;

@@ -20,11 +20,11 @@ export function populateAudioSection(
 
   const toggleBtn = document.createElement('button');
   toggleBtn.className = 'toggle-btn on';
-  toggleBtn.textContent = 'ON';
+  toggleBtn.textContent = getPanelMessages().audioOn;
   toggleBtn.addEventListener('click', () => {
     audioEnabled = !audioEnabled;
     toggleBtn.className = 'toggle-btn ' + (audioEnabled ? 'on' : 'off');
-    toggleBtn.textContent = audioEnabled ? 'ON' : 'OFF';
+    toggleBtn.textContent = audioEnabled ? getPanelMessages().audioOn : getPanelMessages().audioOff;
     toggleBtn.style.borderColor = audioEnabled ? '#4CAF50' : '#e53935';
     cb.onAudioToggle(audioEnabled);
   });

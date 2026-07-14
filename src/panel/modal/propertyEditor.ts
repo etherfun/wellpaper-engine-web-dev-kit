@@ -161,6 +161,88 @@ export function showPropertyModal(
   valRow.appendChild(valWrap);
   body.appendChild(valRow);
 
+  // ---- 选项表格占位（combo 类型 — 在 valRow 之后立即插入） ----
+  const optsRow = document.createElement('div');
+  optsRow.className = 'prop-modal-row';
+  const optsLabel = document.createElement('span');
+  optsLabel.className = 'prop-modal-row-label';
+  optsLabel.textContent = getPanelMessages().propertyOptions;
+  optsRow.appendChild(optsLabel);
+
+  const optsWrap = document.createElement('div');
+  optsWrap.className = 'prop-modal-row-control';
+
+  const optsTable = document.createElement('div');
+  optsTable.className = 'prop-opts-table';
+
+  const thead = document.createElement('div');
+  thead.className = 'prop-opts-thead';
+  for (const [text, cls] of [
+    [getPanelMessages().optionLabel, 'prop-opts-th'],
+    [getPanelMessages().optionValue, 'prop-opts-th'],
+    ['', 'prop-opts-th prop-opts-th-action'],
+  ] as const) {
+    const span = document.createElement('span');
+    span.textContent = text;
+    span.className = cls;
+    thead.appendChild(span);
+  }
+  optsTable.appendChild(thead);
+
+  const tbody = document.createElement('div');
+  tbody.className = 'prop-opts-tbody';
+  optsTable.appendChild(tbody);
+
+  function addOptionRow(optLabel: string, optValue: string): void {
+    const row = document.createElement('div');
+    row.className = 'prop-opts-row';
+
+    const inpLabel = document.createElement('input');
+    inpLabel.type = 'text';
+    inpLabel.className = 'prop-opts-input';
+    inpLabel.value = optLabel;
+    inpLabel.placeholder = getPanelMessages().optionLabel;
+
+    const inpValue = document.createElement('input');
+    inpValue.type = 'text';
+    inpValue.className = 'prop-opts-input';
+    inpValue.value = optValue;
+    inpValue.placeholder = getPanelMessages().optionValue;
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'prop-opts-del-btn';
+    delBtn.textContent = '✕';
+    delBtn.addEventListener('click', () => row.remove());
+
+    row.appendChild(inpLabel);
+    row.appendChild(inpValue);
+    row.appendChild(delBtn);
+    tbody.appendChild(row);
+  }
+
+  if (prop?.options && prop.options.length > 0) {
+    for (const o of prop.options) {
+      addOptionRow(o.label, String(o.value));
+    }
+  } else {
+    addOptionRow('', '');
+  }
+
+  const addOptBtn = document.createElement('button');
+  addOptBtn.className = 'prop-opts-add-btn';
+  addOptBtn.textContent = getPanelMessages().addOption;
+  addOptBtn.addEventListener('click', () => addOptionRow('', ''));
+
+  optsWrap.appendChild(optsTable);
+  optsWrap.appendChild(addOptBtn);
+  optsRow.appendChild(optsWrap);
+  // 在 valRow 之后立即插入 optsRow
+  if (valRow.nextSibling) {
+    body.insertBefore(optsRow, valRow.nextSibling);
+  } else {
+    body.appendChild(optsRow);
+  }
+
   function rebuildValueControl(): void {
     valWrap.innerHTML = '';
     const t = typeSelect.value as PropertyType;
@@ -250,7 +332,7 @@ export function showPropertyModal(
     if (!hasOptions) {
       const opt = document.createElement('option');
       opt.value = '';
-      opt.textContent = '(no options)';
+      opt.textContent = getPanelMessages().optionNoOptions;
       opt.disabled = true;
       sel.appendChild(opt);
     }
@@ -273,7 +355,7 @@ export function showPropertyModal(
   indexInput.min = '0';
   indexInput.step = '1';
   indexInput.value = prop?.index !== undefined ? String(prop.index) : '';
-  indexInput.placeholder = '(可选)';
+  indexInput.placeholder = getPanelMessages().placeholderIndex;
   addField(getPanelMessages().propertyIndex, indexInput);
 
   const condInput = document.createElement('input');
@@ -357,83 +439,6 @@ export function showPropertyModal(
   rebuildTypeSpecificFields();
   typeSelect.addEventListener('change', rebuildTypeSpecificFields);
 
-  // ---- 选项表格（combo） ----
-  const optsRow = document.createElement('div');
-  optsRow.className = 'prop-modal-row';
-  const optsLabel = document.createElement('span');
-  optsLabel.className = 'prop-modal-row-label';
-  optsLabel.textContent = getPanelMessages().propertyOptions;
-  optsRow.appendChild(optsLabel);
-
-  const optsWrap = document.createElement('div');
-  optsWrap.className = 'prop-modal-row-control';
-
-  const optsTable = document.createElement('div');
-  optsTable.className = 'prop-opts-table';
-
-  const thead = document.createElement('div');
-  thead.className = 'prop-opts-thead';
-  for (const [text, cls] of [
-    ['Label', 'prop-opts-th'],
-    ['Value', 'prop-opts-th'],
-    ['', 'prop-opts-th prop-opts-th-action'],
-  ] as const) {
-    const span = document.createElement('span');
-    span.textContent = text;
-    span.className = cls;
-    thead.appendChild(span);
-  }
-  optsTable.appendChild(thead);
-
-  const tbody = document.createElement('div');
-  tbody.className = 'prop-opts-tbody';
-  optsTable.appendChild(tbody);
-
-  function addOptionRow(optLabel: string, optValue: string): void {
-    const row = document.createElement('div');
-    row.className = 'prop-opts-row';
-
-    const inpLabel = document.createElement('input');
-    inpLabel.type = 'text';
-    inpLabel.className = 'prop-opts-input';
-    inpLabel.value = optLabel;
-    inpLabel.placeholder = 'Label';
-
-    const inpValue = document.createElement('input');
-    inpValue.type = 'text';
-    inpValue.className = 'prop-opts-input';
-    inpValue.value = optValue;
-    inpValue.placeholder = 'Value';
-
-    const delBtn = document.createElement('button');
-    delBtn.className = 'prop-opts-del-btn';
-    delBtn.textContent = '✕';
-    delBtn.addEventListener('click', () => row.remove());
-
-    row.appendChild(inpLabel);
-    row.appendChild(inpValue);
-    row.appendChild(delBtn);
-    tbody.appendChild(row);
-  }
-
-  if (prop?.options && prop.options.length > 0) {
-    for (const o of prop.options) {
-      addOptionRow(o.label, String(o.value));
-    }
-  } else {
-    addOptionRow('', '');
-  }
-
-  const addOptBtn = document.createElement('button');
-  addOptBtn.className = 'prop-opts-add-btn';
-  addOptBtn.textContent = getPanelMessages().addOption;
-  addOptBtn.addEventListener('click', () => addOptionRow('', ''));
-
-  optsWrap.appendChild(optsTable);
-  optsWrap.appendChild(addOptBtn);
-  optsRow.appendChild(optsWrap);
-  body.appendChild(optsRow);
-
   rebuildValueControl();
   if (typeSelect.value !== 'combo') optsRow.style.display = 'none';
   typeSelect.addEventListener('change', () => {
@@ -445,7 +450,7 @@ export function showPropertyModal(
   const i18nInput = document.createElement('input');
   i18nInput.type = 'text';
   i18nInput.value = prop?.text ?? (isNew ? '' : '');
-  i18nInput.placeholder = '留空则使用键名自动生成';
+  i18nInput.placeholder = getPanelMessages().placeholderAutoGen;
   // i18nInput 放入翻译区内部，不单独 addField
 
   // i18n 键自动生成提示行
@@ -457,7 +462,7 @@ export function showPropertyModal(
     const autoKey = autoI18nKey(keyInput.value);
     const current = i18nInput.value.trim();
     if (current && current !== autoKey) {
-      i18nHintRow.textContent = `↳ 自动生成: ${autoKey}`;
+      i18nHintRow.textContent = getPanelMessages().hintAutoGen + autoKey;
       i18nHintRow.style.display = '';
     } else {
       i18nHintRow.style.display = 'none';
@@ -493,7 +498,7 @@ export function showPropertyModal(
 
   const transTitle = document.createElement('div');
   transTitle.className = 'prop-modal-trans-header';
-  transTitle.textContent = '📖 翻译/本地化';
+  transTitle.textContent = getPanelMessages().translationHeader;
   transContainer.appendChild(transTitle);
 
   // 翻译键行
@@ -524,7 +529,7 @@ export function showPropertyModal(
     if (!langs || langs.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'prop-modal-trans-empty';
-      empty.textContent = 'project.json に未定义通用章节 (general.localization)';
+      empty.textContent = getPanelMessages().translationNoLoc;
       transLangWrap.appendChild(empty);
       return;
     }
@@ -542,7 +547,7 @@ export function showPropertyModal(
       input.type = 'text';
       input.className = 'prop-modal-trans-input';
       input.value = allLocalizations?.[lang]?.[i18nKey] ?? '';
-      input.placeholder = '(未翻译)';
+      input.placeholder = getPanelMessages().translationUntranslated;
       row.appendChild(input);
 
       transRows[lang] = input;
@@ -705,22 +710,22 @@ function wrapCheckbox(text: string, input: HTMLInputElement): HTMLElement {
 function buildSliderFields(prop: ProjectPropertyDef | null): SliderFields {
   const min = document.createElement('input');
   min.type = 'number'; min.step = 'any';
-  min.placeholder = 'Min'; min.value = String(prop?.min ?? 0);
+  min.placeholder = getPanelMessages().defaultMin; min.value = String(prop?.min ?? 0);
   min.style.width = '56px';
 
   const max = document.createElement('input');
   max.type = 'number'; max.step = 'any';
-  max.placeholder = 'Max'; max.value = String(prop?.max ?? 100);
+  max.placeholder = getPanelMessages().defaultMax; max.value = String(prop?.max ?? 100);
   max.style.width = '56px';
 
   const step = document.createElement('input');
   step.type = 'number'; step.step = 'any';
-  step.placeholder = 'Step'; step.value = String(prop?.step ?? 1);
+  step.placeholder = getPanelMessages().defaultStep; step.value = String(prop?.step ?? 1);
   step.style.width = '56px';
 
   const precision = document.createElement('input');
   precision.type = 'number'; precision.min = '0'; precision.step = '1';
-  precision.placeholder = 'Prec'; precision.value = String(prop?.precision ?? 0);
+  precision.placeholder = getPanelMessages().defaultPrec; precision.value = String(prop?.precision ?? 0);
   precision.style.width = '56px';
 
   const fractionWrap = document.createElement('label');

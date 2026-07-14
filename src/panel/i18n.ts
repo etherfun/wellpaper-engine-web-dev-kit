@@ -113,7 +113,26 @@ export interface PanelMessages {
   typeGroup: string;
   typeTrue: string;
   typeFalse: string;
+  optionLabel: string;
+  optionValue: string;
+  optionNoOptions: string;
   typeFilterAll: string;
+  audioOn: string;
+  audioOff: string;
+  rgbLoaded: string;
+  rgbLoading: string;
+  saveButton: string;
+  addLangPlaceholder: string;
+  placeholderAutoGen: string;
+  hintAutoGen: string;
+  placeholderIndex: string;
+  translationHeader: string;
+  translationUntranslated: string;
+  translationNoLoc: string;
+  defaultMin: string;
+  defaultMax: string;
+  defaultStep: string;
+  defaultPrec: string;
   editPropertyTitle: string;
   addPropertyTitle: string;
   jsonExported: string;
@@ -219,6 +238,25 @@ const DICT_EN: PanelMessages = {
   typeFilterAll: 'All Types',
   typeTrue: 'True',
   typeFalse: 'False',
+  optionLabel: 'Label',
+  optionValue: 'Value',
+  optionNoOptions: '(no options)',
+  audioOn: 'ON',
+  audioOff: 'OFF',
+  rgbLoaded: '✅ loaded',
+  rgbLoading: '⏳ loading…',
+  saveButton: '💾 Save',
+  addLangPlaceholder: 'Add language…',
+  placeholderAutoGen: 'Leave empty for auto-generate',
+  hintAutoGen: '↳ Auto-generated: ',
+  placeholderIndex: '(optional)',
+  translationHeader: '📖 Translation / Localization',
+  translationUntranslated: '(untranslated)',
+  translationNoLoc: 'project.json has no general.localization section',
+  defaultMin: 'Min',
+  defaultMax: 'Max',
+  defaultStep: 'Step',
+  defaultPrec: 'Prec',
   editPropertyTitle: 'Edit Property',
   addPropertyTitle: 'Add Property',
   jsonExported: 'JSON exported — check your downloads',
@@ -324,6 +362,25 @@ const DICT_ZH: PanelMessages = {
   typeFilterAll: '全部类型',
   typeTrue: '开启',
   typeFalse: '关闭',
+  optionLabel: '标签',
+  optionValue: '值',
+  optionNoOptions: '(无选项)',
+  audioOn: '开启',
+  audioOff: '关闭',
+  rgbLoaded: '✅ 已加载',
+  rgbLoading: '⏳ 加载中…',
+  saveButton: '💾 保存修改',
+  addLangPlaceholder: '添加语言…',
+  placeholderAutoGen: '留空则使用键名自动生成',
+  hintAutoGen: '↳ 自动生成: ',
+  placeholderIndex: '(可选)',
+  translationHeader: '📖 翻译/本地化',
+  translationUntranslated: '(未翻译)',
+  translationNoLoc: 'project.json 中未定义通用章节 (general.localization)',
+  defaultMin: '最小值',
+  defaultMax: '最大值',
+  defaultStep: '步进值',
+  defaultPrec: '小数精度',
   editPropertyTitle: '编辑配置项',
   addPropertyTitle: '添加配置项',
   jsonExported: 'JSON 已导出 — 请查看下载文件夹',
