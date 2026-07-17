@@ -90,6 +90,34 @@ export function createPanel(deps: PanelDeps) {
         onLifecycleFps: (fps) => lifecycleMock?.simulateFpsChange(fps),
         onClose: () => hide(),
         onMinimize: () => hide(),
+        onSaveI18nTranslation: (i18nKey: string, translations: Record<string, string>) => {
+          // 更新内存中的 allLocalizations
+          for (const [lang, text] of Object.entries(translations)) {
+            if (!allLocalizations[lang]) allLocalizations[lang] = {};
+            allLocalizations[lang]![i18nKey] = text;
+          }
+          // 刷新当前语言的所有属性 displayName
+          const currentLocale = allLocalizations[appliedLanguage] ?? {};
+          for (const prop of props) {
+            if (!prop.text || prop.text === prop.key) continue;
+            const dn = currentLocale[prop.text]?.trim();
+            prop.displayName = dn || prop.text;
+            prop.missingTranslation = !dn;
+            if (prop.type === 'combo') {
+              const rawOpts = (rawDefs[prop.key] as { options?: { value: unknown; label: string }[] } | undefined)?.options;
+              if (rawOpts) {
+                prop.options = rawOpts.map((opt) => ({
+                  value: opt.value,
+                  label: currentLocale[opt.label]?.trim() || opt.label,
+                }));
+              }
+            }
+          }
+          if (panelController?.getPropertiesRefresher) {
+            panelController.getPropertiesRefresher()();
+          }
+          console.log(`[WE Dev Kit] i18n translation saved: "${i18nKey}"`, translations);
+        },
       },
       initialProps,
       appliedLanguage,
@@ -125,7 +153,8 @@ export function createPanel(deps: PanelDeps) {
         allLocalizations,
         activeLanguage: appliedLanguage,
         availableLanguages,
-      }
+      },
+      allLocalizations
     );
 
     if (mediaMock) {
@@ -144,10 +173,10 @@ export function createPanel(deps: PanelDeps) {
       props = newProps;
       panelController!.getPropertiesRefresher()(newProps);
     };
-    (window as unknown as { __weDevKitExportJson?: () => void }).__weDevKitExportJson = () => {
-      const json = serializePropertiesToJson(props);
+    (window as unknown as { __weDevKitSaveProps?: () => void }).__weDevKitSaveProps = () => {
+      const json = serializePropertiesToJson(props, rawDefs);
       downloadJsonFile({ general: { properties: json } }, 'project.json');
-      console.log(`[WE Dev Kit] JSON exported: ${Object.keys(json).length} properties`);
+      console.log(`[WE Dev Kit] Properties saved: ${Object.keys(json).length} properties`);
     };
 
     isVisible = true;

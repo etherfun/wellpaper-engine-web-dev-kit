@@ -72,7 +72,8 @@ export function renderPanel(
   availableLanguages: string[] = [],
   onLanguageSwitch?: (lang: string) => void,
   messages?: PanelMessages,
-  editorContext?: PropertyEditorContext
+  editorContext?: PropertyEditorContext,
+  allLocalizations?: Record<string, Record<string, string>>
 ): PanelController {
   setPanelMessages(messages ?? resolvePanelMessages());
 
@@ -102,13 +103,13 @@ export function renderPanel(
 
   const minimizeBtn = document.createElement('button');
   minimizeBtn.className = 'panel-btn';
-  minimizeBtn.textContent = '—';
+  minimizeBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="2" y="5.5" width="8" height="1" rx="0.5" fill="currentColor"/></svg>';
   minimizeBtn.title = getPanelMessages().minimize;
   header.appendChild(minimizeBtn);
 
   const closeBtn = document.createElement('button');
   closeBtn.className = 'panel-btn';
-  closeBtn.textContent = '×';
+  closeBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M3 3L9 9M9 3L3 9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>';
   closeBtn.title = getPanelMessages().close;
   header.appendChild(closeBtn);
 
@@ -141,7 +142,8 @@ export function renderPanel(
     appliedLanguage,
     availableLanguages,
     onLanguageSwitch,
-    editorContext
+    editorContext,
+    allLocalizations
   );
 
   // ---- 样式注入 ----
@@ -168,7 +170,16 @@ export function renderPanel(
   clock.textContent = new Date().toLocaleTimeString();
 
   closeBtn.addEventListener('click', () => callbacks.onClose());
-  minimizeBtn.addEventListener('click', () => callbacks.onMinimize());
+
+  let isMinimized = false;
+  minimizeBtn.addEventListener('click', () => {
+    isMinimized = !isMinimized;
+    panel.classList.toggle('minimized', isMinimized);
+    minimizeBtn.innerHTML = isMinimized
+      ? '<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="2" y="3" width="8" height="6" rx="1" stroke="currentColor" stroke-width="1"/><rect x="3.5" y="4.5" width="5" height="3" rx="0.5" fill="currentColor"/></svg>'
+      : '<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="2" y="5.5" width="8" height="1" rx="0.5" fill="currentColor"/></svg>';
+    minimizeBtn.title = isMinimized ? getPanelMessages().restore : getPanelMessages().minimize;
+  });
 
   void state;
 
@@ -191,7 +202,7 @@ export function renderPanel(
     },
     updateRgbState(loaded) {
       const el = shadow.querySelector('#rgb-status');
-      if (el) el.textContent = loaded ? '✅ loaded' : '⏳ loading...';
+      if (el) el.textContent = loaded ? getPanelMessages().rgbLoaded : getPanelMessages().rgbLoading;
     },
     destroy() {
       clearInterval(clockInterval);

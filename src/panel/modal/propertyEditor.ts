@@ -21,8 +21,8 @@
  */
 
 import type { PropertyDefInput, ProjectPropertyDef, PropertyType } from '../../types';
-import { getPanelMessages } from '../i18n';
-import { hexToWeColor, weColorToHex } from '../../utils/color';
+import { getPanelMessages, localeDisplayName } from '../i18n';
+import { weColorToHex, hexToWeColor } from '../../utils/color';
 import { createDraggableHost } from '../../utils/dom';
 
 export type PropertyEditorSaveHandler = (
@@ -45,6 +45,22 @@ const TYPE_OPTIONS: PropertyType[] = [
 
 const DEFAULT_TYPE: PropertyType = 'text';
 
+/** 驼峰/帕斯卡 → 蛇形 (例: PWLineDensity → pw_line_density) */
+function toSnakeCase(str: string): string {
+  return str
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')  // consecutive caps → split
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')     // lower→upper → split
+    .toLowerCase();
+}
+
+/** 从 property key 自动生成 i18n 翻译键 */
+function autoI18nKey(key: string): string {
+  if (!key.trim()) return '';
+  const snake = toSnakeCase(key.trim());
+  // 以 ui_ 开头则直接返回蛇形，否则加 ui_ 前缀
+  return snake.startsWith('ui_') ? snake : 'ui_' + snake;
+}
+
 /** 上下文：外部传入的 localization 字典（用于 text 字段的状态提示） */
 export interface PropertyEditorContext {
   activeLocalization: Record<string, string>;
@@ -58,14 +74,17 @@ export interface PropertyEditorContext {
 export function showPropertyModal(
   prop: ProjectPropertyDef | null,
   onSave: PropertyEditorSaveHandler,
-  context?: PropertyEditorContext
+  context?: PropertyEditorContext,
+  allLocalizations?: Record<string, Record<string, string>>,
+  availableLanguages?: string[],
+  onSaveI18nTranslation?: (i18nKey: string, translations: Record<string, string>) => void
 ): void {
   const isNew = prop === null;
   const ctx: PropertyEditorContext = context ?? {
-    activeLocalization: {},
-    allLocalizations: {},
+    activeLocalization: allLocalizations?.['en-us'] ?? {},
+    allLocalizations: allLocalizations ?? {},
     activeLanguage: 'en-us',
-    availableLanguages: [],
+    availableLanguages: availableLanguages ?? [],
   };
 
   const { host, destroy } = createDraggableHost({
@@ -144,6 +163,17 @@ export function showPropertyModal(
   keyInput.placeholder = 'rgb_show';
   if (!isNew) keyInput.disabled = true;
   addField(getPanelMessages().propertyKey, keyInput, isNew ? '' : '（编辑模式不可修改）');
+
+  // 自动生成 i18n key
+  keyInput.addEventListener('input', () => {
+    if (isNew && !textInput.value.trim()) {
+      const autoKey = autoI18nKey(keyInput.value);
+      if (autoKey) {
+        textInput.value = autoKey;
+        refreshTextStatus();
+      }
+    }
+  });
 
   // ---- 2. i18n ----
   addSeparator('🌐 ' + (ctx.activeLanguage || 'localization'));
@@ -801,6 +831,72 @@ export function showPropertyModal(
   btnRow.appendChild(saveBtn);
 
   body.appendChild(btnRow);
+
+  // ---- 7. 翻译编辑器（批量编辑所有语言的翻译文本） ----
+  if (onSaveI18nTranslation && ctx.availableLanguages.length > 0) {
+    const transSep = document.createElement('div');
+    transSep.className = 'prop-modal-sep';
+    transSep.textContent = '🌍 ' + getPanelMessages().i18nTranslations;
+    body.appendChild(transSep);
+
+    const transSection = document.createElement('div');
+    transSection.className = 'prop-modal-trans-section';
+
+    // 表头行
+    const headerRow = document.createElement('div');
+    headerRow.className = 'prop-modal-trans-header';
+    headerRow.textContent = getPanelMessages().languageColumn + ' → ' + getPanelMessages().translationColumn;
+    transSection.appendChild(headerRow);
+
+    const transInputs: Map<string, HTMLInputElement> = new Map();
+    for (const lang of ctx.availableLanguages) {
+      const row = document.createElement('div');
+      row.className = 'prop-modal-trans-row';
+
+      const label = document.createElement('span');
+      label.className = 'prop-modal-trans-label';
+      label.textContent = localeDisplayName(lang);
+      row.appendChild(label);
+
+      const inp = document.createElement('input');
+      inp.type = 'text';
+      inp.className = 'prop-modal-trans-input';
+      const existing = ctx.allLocalizations[lang]?.[textInput.value.trim()] ?? '';
+      inp.value = existing;
+      inp.placeholder = getPanelMessages().translationPlaceholder;
+      row.appendChild(inp);
+      transInputs.set(lang, inp);
+
+      transSection.appendChild(row);
+    }
+
+    body.appendChild(transSection);
+
+    // 翻译更新：当 text 键变化时刷新现有翻译
+    textInput.addEventListener('input', () => {
+      const key = textInput.value.trim();
+      for (const [lang, inp] of transInputs) {
+        const existing = ctx.allLocalizations[lang]?.[key] ?? '';
+        inp.value = existing;
+        inp.placeholder = existing ? '' : getPanelMessages().translationPlaceholder;
+      }
+    });
+
+    // 保存按钮同时收集翻译
+    const origSaveClick = saveBtn.click;
+    saveBtn.addEventListener('click', () => {
+      const key = textInput.value.trim();
+      if (!key) return;
+      const translations: Record<string, string> = {};
+      for (const [lang, inp] of transInputs) {
+        const val = inp.value.trim();
+        if (val) translations[lang] = val;
+      }
+      if (Object.keys(translations).length > 0) {
+        onSaveI18nTranslation(key, translations);
+      }
+    });
+  }
 
   host.appendChild(panel);
   document.body.appendChild(host);

@@ -30,6 +30,8 @@ export interface PanelCallbacks {
   onLifecycleFps: (fps: number) => void;
   onClose: () => void;
   onMinimize: () => void;
+  /** 保存 i18n 翻译（当用户在属性编辑器中编辑翻译时触发） */
+  onSaveI18nTranslation?: (i18nKey: string, translations: Record<string, string>) => void;
 }
 
 export interface PanelMediaUpdater {

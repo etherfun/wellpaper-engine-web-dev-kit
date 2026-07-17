@@ -435,17 +435,42 @@ export const PANEL_STYLES = `
 #__we_devkit_panel .prop-row {
   display: grid;
   grid-template-columns: 20px 14px 1fr 1fr auto auto;
-  align-items: center;
+  align-items: start;
   gap: 4px;
   padding: 3px 0;
   min-height: 22px;
 }
-#__we_devkit_panel .prop-row .prop-key {
+#__we_devkit_panel .prop-row .prop-key-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+}
+#__we_devkit_panel .prop-row .prop-key-col .prop-key {
   font-size: 11px;
   color: #aaa;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+#__we_devkit_panel .prop-row .prop-key-col .prop-i18n-row {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 9px;
+  line-height: 1;
+}
+#__we_devkit_panel .prop-row .prop-key-col .prop-i18n-row .prop-i18n-key {
+  color: #666;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#__we_devkit_panel .prop-row .prop-key-col .prop-i18n-row .prop-i18n-shared-badge {
+  color: #ffa726;
+  cursor: help;
+  flex-shrink: 0;
+  font-size: 10px;
 }
 #__we_devkit_panel .prop-row .prop-control {
   min-width: 0;
@@ -495,6 +520,16 @@ export const PANEL_STYLES = `
 }
 #__we_devkit_panel .prop-search:focus {
   border-color: #7c9aff;
+}
+
+/* ---- 配置项工具栏（sticky 固定） ---- */
+#__we_devkit_panel .prop-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: rgba(30, 30, 35, 0.97);
+  padding: 2px 0 4px;
+  margin: -4px 0 4px;
 }
 
 /* ---- 可见性指示器 ---- */
@@ -874,7 +909,8 @@ export const GLOBAL_MODAL_STYLES = `
   border-bottom: 1px solid #444;
 }
 .prop-opts-th {
-  flex: 1;
+  flex: 1 1 0;
+  min-width: 0;
   font-size: 10px;
   color: #888;
   padding: 3px 6px;
@@ -896,7 +932,8 @@ export const GLOBAL_MODAL_STYLES = `
   border-bottom: none;
 }
 .prop-opts-input {
-  flex: 1;
+  flex: 1 1 0;
+  min-width: 0;
   background: transparent !important;
   border: none !important;
   color: #e0e0e0;
@@ -1377,5 +1414,63 @@ export const GLOBAL_MODAL_STYLES = `
 }
 .prop-modal-btn-primary:active {
   transform: translateY(1px);
+}
+/* ---- 翻译编辑区 ---- */
+.prop-modal-trans-section {
+  margin: 0;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  background: rgba(0,0,0,0.1);
+}
+.prop-modal-trans-header {
+  font-size: 11px;
+  font-weight: 600;
+  color: #999;
+  padding: 4px 8px;
+  letter-spacing: 0.3px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  text-align: center;
+}
+.prop-modal-trans-row {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  min-height: 29px;
+}
+.prop-modal-trans-row:last-child {
+  border-bottom: none;
+}
+.prop-modal-trans-label {
+  flex: 0 0 90px;
+  font-size: 11px;
+  color: #aaa;
+  padding: 0 8px;
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.prop-modal-trans-input {
+  flex: 1;
+  background: #1a1a1a;
+  border: 1px solid #444;
+  color: #e0e0e0;
+  padding: 4px 8px;
+  border-radius: 3px;
+  font-size: 12px;
+  outline: none;
+  height: 24px;
+  box-sizing: border-box;
+  margin: 0 8px 0 0;
+}
+.prop-modal-trans-input:focus {
+  border-color: #7c9aff;
+}
+.prop-modal-trans-input::placeholder {
+  color: #555;
+}
+.prop-modal-trans-empty {
+  padding: 6px 8px;
+  font-size: 10px;
+  color: #555;
+  font-style: italic;
 }
 `;
