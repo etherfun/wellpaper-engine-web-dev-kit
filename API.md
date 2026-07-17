@@ -331,7 +331,7 @@ kit.rgb.simulateFrame(100, 20);
 
 ## PropertiesController — 配置项控制
 
-从 `project.json` 读取 `general.properties` 定义，提供属性可见性查询、翻译键丢失检查等功能。
+从 `project.json` 读取 `general.properties` 定义，提供属性可见性查询、翻译键丢失检查、属性增删改等功能。
 
 ### 方法
 
@@ -346,6 +346,9 @@ kit.rgb.simulateFrame(100, 20);
 | `getVisibleProperties()` | `ProjectPropertyDef[]` | 获取当前可见的属性列表 |
 | `getCurrentValues()` | `Record<string, unknown>` | 获取所有属性的当前值 |
 | `reloadProperties()` | `Promise<void>` | 从 project.json 重新加载属性定义 |
+| `addProperty(def)` | `ProjectPropertyDef` | 添加一个新的属性定义 |
+| `updateProperty(key, def)` | `ProjectPropertyDef \| undefined` | 更新一个已有属性的定义 |
+| `removeProperty(key)` | `boolean` | 删除一个属性定义 |
 
 ### ProjectPropertyDef 结构
 
@@ -359,9 +362,15 @@ interface ProjectPropertyDef {
   missingTranslation?: boolean;         // 翻译是否存在（false = 用 key 当 fallback）
   min?: number;                         // slider 最小值
   max?: number;                         // slider 最大值
+  step?: number;                        // slider 步进值
+  precision?: number;                   // slider 小数精度
+  fraction?: boolean;                   // slider 是否允许小数
+  fileType?: string;                    // file/directory 文件类型过滤（"video"）
+  mode?: string;                        // directory 加载模式（"ondemand"）
   options?: { value: unknown; label: string }[];  // combo 选项
   condition?: string;                   // 可见性条件表达式
   order?: number;                       // 排序
+  index?: number;                       // WE project.json index 字段
 }
 ```
 
@@ -388,9 +397,28 @@ interface PropertyTranslationStatus {
 }
 ```
 
+### PropertyDefInput 结构（添加/编辑时的输入）
+
+```typescript
+interface PropertyDefInput {
+  key: string;
+  type: PropertyType;
+  value?: unknown;
+  text?: string;             // i18n key
+  displayName?: string;
+  min?: number; max?: number; step?: number;
+  precision?: number; fraction?: boolean;
+  fileType?: string; mode?: string;
+  options?: { value: unknown; label: string }[];
+  condition?: string;
+  order?: number;
+  index?: number;
+}
+```
+
 ### 可见性条件求值
 
-支持 project.json 中的 `condition` 表达式语法：
+支持 project.json 中的 `condition` 表达式语法（全栈 lexer + parser）：
 
 - 比较：`.value == X`, `.value != X`
 - 布尔值：`true`, `false`
@@ -434,6 +462,15 @@ console.log(`有 ${missing.length} 个属性翻译丢失:`, missing.map(m => m.i
 // 获取当前可见的属性
 const visible = kit.properties.getVisibleProperties();
 console.log(`当前可见 ${visible.length} 个属性`);
+
+// 添加新属性
+kit.properties.addProperty({
+  key: 'my_setting',
+  type: 'bool',
+  value: true,
+  text: 'ui_my_setting',
+  order: 1,
+});
 ```
 
 ---

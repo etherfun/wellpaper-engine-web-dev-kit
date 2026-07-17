@@ -130,12 +130,72 @@ npm run build
 
 可视化调试面板，Shadow DOM 隔离宿主页面 CSS 污染：
 
-- 音频模拟控制（振幅/低频增益/速度/模式）
-- 媒体播放控制（播放/暂停/切曲/自定义曲目/上传封面）
-- RGB 数据实时监控
-- 生命周期控制（暂停/恢复/FPS）
-- 属性查看器（可见性/翻译状态筛选）
-- 拖拽标题栏移动、时钟显示
+- **音频模拟控制** — 振幅/低频增益/速度/模式切换（Beats/Melody/Mixed），音频输入开关
+- **媒体播放控制** — 播放/暂停/切曲/自定义曲目/上传封面
+- **RGB 数据实时监控** — 等待状态显示
+- **生命周期控制** — 暂停/恢复/FPS 限制设置
+- **属性查看器** — 搜索、类型筛选（Bool/Slider/Color 等）、可见性筛选（全部/可见/隐藏）、翻译状态筛选（全部/缺失/正常）、键名/名称切换显示
+- **属性编辑器弹窗 V2** — 浮动可拖拽窗口，支持添加/编辑/删除属性：
+  - 键名自动生成 i18n 翻译键（驼峰 → 蛇形）
+  - 翻译编辑器：批量编辑所有语言的翻译文本
+  - 类型切换时 confirm 提示防误操作
+  - Bool 用 checkbox 组，Slider 用 [range + number] 联动
+  - Color 用 picker + WE hex 同步
+  - Combo 选项表格（Label/Value 编辑，增删行）
+  - 翻译键状态提示（是否在 localization 字典中存在）
+- **语言管理** — 语言切换下拉、新增语言下拉（支持 35+ WE 语言代码）、翻译缺失标记
+- **Localization 面板** — 查看当前语言翻译字典的所有条目
+- **时钟显示**、**最小化**、拖拽标题栏移动
+
+#### 控制面板属性编辑弹窗
+
+属性编辑弹窗 V2 实现了完整的 project.json 属性编辑体验：
+
+- **基础**：键名（编辑模式锁定）、类型选择（9 种 WE 类型）
+- **i18n**：自动翻译键生成、翻译编辑器（多语言批量编辑）、翻译状态提示
+- **值控件**：Bool 双选 / Slider [range+number] / Color picker+WE hex / Combo 下拉预览 / Text/File/Directory/Group 文本输入
+- **类型专属**：Slider 范围 (Min/Max/Step/Precision/Fraction)、File 视频模式、Directory 点播模式
+- **Combo 选项**：Label + Value 表格编辑，增删行
+- **元数据**：Order / Index / Condition
+
+### 国际化 (i18n)
+
+控制面板内置 en-US / zh-CN 双语界面，基于 `navigator.language` 自动选择。所有 UI 文本通过 `PanelMessages` 接口管理：
+
+```typescript
+import { getPanelMessages } from './panel/i18n';
+// 自动根据浏览器语言返回对应翻译
+console.log(getPanelMessages().amplitude); // "Amplitude" / "振幅"
+```
+
+属性编辑弹窗支持 **翻译编辑器**，可从 project.json 的 `general.localization` 中读取所有语言的翻译，并在编辑属性时批量修改多语言文本。
+
+**语言策略**（project.json 读取时）：
+1. 精确匹配 `navigator.language`（如 `zh-CN`）
+2. 语言前缀匹配（如 `zh`）
+3. 回退到 `en-us`
+4. 第一个可用语言
+
+### 条件表达式求值器
+
+`conditionEvaluator.ts` 完整支持 project.json 属性可见性条件语法：
+
+- 比较：`.value == X`、`.value != X`
+- 布尔值：`true`、`false`
+- 数字：整数和浮点数
+- 字符串：`'单引号'` 或 `"双引号"`
+- 组合：`&&` (AND)、`||` (OR)
+- 括号：`(expr)` 分组
+
+```typescript
+import { evaluateCondition } from './panel/conditionEvaluator';
+
+// 检查 "showDate" 属性是否可见
+const visible = evaluateCondition(
+  'showDate.value == true',
+  (key) => properties.find(p => p.key === key)?.value
+);
+```
 
 ### 环境自动检测
 
@@ -155,6 +215,16 @@ npm run build
 
 自动补充 `setPaused`、`applyGeneralProperties`、`userDirectoryFilesAddedOrChanged`、`userDirectoryFilesRemoved` 方法，确保项目代码在浏览器中不会因缺少 WE API 而报错。使用 `Object.defineProperty` setter 拦截后续赋值，始终补齐缺失方法。
 
+### 属性配置控制
+
+从 `project.json` 读取 `general.properties` 定义，提供：
+
+- 属性定义查询：类型、值范围、选项列表
+- 可见性条件求值：解析 `.value == X` / `&&` / `||` 等表达式
+- 翻译键丢失检查：定位未翻译的 UI 文本
+- 多语言匹配：按浏览器语言精确匹配 → 语言前缀 → 回退到 en-us
+- 属性序列化：将当前属性列表导出为 project.json 格式
+
 ## 项目结构
 
 ```
@@ -170,9 +240,20 @@ src/
   panel/
     index.ts             # 控制面板控制器
     renderer.ts          # DOM 渲染（Shadow DOM 隔离）
-    styles.ts            # 内联样式
-    projectJsonReader.ts # project.json 属性解析 + 语言匹配
-    conditionEvaluator.ts# 条件表达式求值器
+    styles.ts            # 内联样式（含 V2 弹窗、翻译编辑器 CSS）
+    projectJsonReader.ts # project.json 属性解析 + 语言匹配 + 序列化导出
+    conditionEvaluator.ts# 条件表达式求值器（lexer + parser）
+    i18n.ts              # 国际化字典（en-US / zh-CN）
+    callbacks.ts         # 面板回调契约 + 类型定义
+    layout.ts            # DOM 布局工具函数
+    sections/
+      audio.ts           # 音频模拟控制 UI
+      media.ts           # 媒体集成控制 UI
+      lifecycle.ts       # 生命周期控制 UI
+      properties.ts      # 属性查看器 UI（搜索/筛选/翻译/语言管理）
+      rgb.ts             # RGB 数据监控 UI
+    modal/
+      propertyEditor.ts  # 属性编辑弹窗 V2（拖拽/翻译编辑器/类型控件）
 ```
 
 ## 构建
