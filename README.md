@@ -1,40 +1,84 @@
 # wallpaper-engine-web-dev-kit
 
-[English](docs/README.en.md) | 简体中文
+English | [简体中文](docs/README.zh-CN.md)
 
 ***
 
-非官方 Wallpaper Engine **网页壁纸** 运行时模拟层 — 在浏览器中完整模拟 WE 注入的 API 行为。
+Unofficial Wallpaper Engine **web wallpaper** runtime simulation layer — fully emulates WE injected APIs in the browser.
 
-## 用途
+## Purpose
 
-在浏览器开发 Wallpaper Engine 网页壁纸时，无需在 WE 编辑器中反复加载壁纸即可：
+Develop Wallpaper Engine web wallpapers in your browser without repeatedly loading the wallpaper in the WE editor:
 
-- 查看属性配置面板
-- 调试音频可视化（模拟 128 元素频谱）
-- 测试媒体集成（预置曲库 + 自定义曲目/封面）
-- 预览 RGB LED 灯效（截获并解码 `setAllDevicesByImageData`）
-- 模拟生命周期事件（pause/resume/FPS 变化）
-- 从 `project.json` 读取属性定义，支持语言切换
+- Inspect the property configuration panel
+- Debug audio visualization (128-bin spectrum simulation)
+- Test media integration (built-in track library + custom tracks/album art)
+- Preview RGB LED effects (intercept and decode `setAllDevicesByImageData`)
+- Simulate lifecycle events (pause/resume/FPS changes)
+- Read property definitions from `project.json` with multi-language support
 
-## 使用方式
+## Usage
 
-### 浏览器直接引用（IIFE）
+> 💡 **推荐方式：构建时注入** — 无需修改项目源码，自动将 dev-kit 注入已有壁纸项目。
 
-```html
-<script src="./dist/index.global.js"></script>
-<script>
-  WeDevKit.createWeDevKit({
-    panel: true,
-    audio: { amplitude: 0.6 },
-    media: { autoCycle: true },
-    rgb: true,
-    lifecycle: true,
-  });
-</script>
+### Build-Time Injection ★ 推荐
+
+Inject we-dev-kit into existing wallpaper projects **without modifying source code**. Useful for CI/CD, one-off debugging, or adding dev tooling to third-party projects.
+
+> **Prerequisite:** Build your project first (e.g., `vite build`, `webpack`, or `tsc`). The `inputDir` must contain the final build output (`index.html` + assets) — `prepareDevBuild` and `injectIntoHtml` operate on the **already-built** artifacts.
+
+Use the built-in `inject` module — no manual script needed:
+
+```javascript
+// scripts/build-dev.mjs
+import { execSync } from 'node:child_process';
+import { prepareDevBuild } from 'wallpaper-engine-web-dev-kit/inject';
+
+// 1. Build your project first
+execSync('vite build', { stdio: 'inherit' });
+//    inputDir ('dist') must now contain built index.html + assets
+
+// 2. One-shot injection: copy build output + inject dev-kit script
+prepareDevBuild({
+  inputDir: 'dist',
+  outputDir: 'dev',
+  config: { panel: true, audio: true, media: true, rgb: true, lifecycle: true },
+});
 ```
 
-### 模块导入（npm / TypeScript 项目）
+Or use the low-level `injectIntoHtml` for custom workflows — make sure to build first:
+
+```javascript
+import fs from 'node:fs';
+import { injectIntoHtml } from 'wallpaper-engine-web-dev-kit/inject';
+
+// Ensure 'dist/index.html' exists (project must be built first)
+const html = fs.readFileSync('dist/index.html', 'utf8');
+fs.writeFileSync(
+  'dev/index.html',
+  injectIntoHtml(html, { config: { panel: true } }),
+);
+```
+
+Add the script to `package.json`:
+
+```json
+"scripts": {
+  "build:dev": "node scripts/build-dev.mjs"
+}
+```
+
+Run it:
+
+```bash
+npm run build:dev
+```
+
+The output `dev/` directory is fully self-contained — open `dev/index.html` in a browser and all WE APIs are simulated without touching a single source file.
+
+---
+
+### Module Import (npm / TypeScript Project)
 
 ```bash
 npm install wallpaper-engine-web-dev-kit
@@ -51,224 +95,239 @@ const kit = createWeDevKit({
   lifecycle: true,
 });
 
-// 控制面板
+// Control panel
 kit.togglePanel();
 
-// 媒体控制
+// Media control
 kit.media.play();
 kit.media.nextTrack();
 
-// RGB 数据
+// RGB data
 kit.rgb.onFrame((frame) => console.log('RGB frame:', frame));
 
-// 清理
+// Cleanup
 kit.destroy();
 ```
 
-### 构建产物引用
+### Browser Direct Reference (IIFE)
 
-```bash
-# 构建 dev-kit
-npm run build
-
-# 产物位于 dist/
-#   dist/index.global.js  — IIFE（浏览器 script 标签）
-#   dist/index.js         — ESM
-#   dist/index.cjs        — CommonJS
-#   dist/index.d.ts       — 类型定义
+```html
+<script src="./dist/index.global.js"></script>
+<script>
+  WeDevKit.createWeDevKit({
+    panel: true,
+    audio: { amplitude: 0.6 },
+    media: { autoCycle: true },
+    rgb: true,
+    lifecycle: true,
+  });
+</script>
 ```
 
-## 文档
+### Build Outputs
 
-完整 API 参考文档、类型定义、子控制器说明及 agent 使用示例请参见 **[docs/API.md](docs/API.md)**。
+```bash
+# Build dev-kit
+npm run build
 
-## 功能特性
+# Outputs in dist/
+#   dist/index.global.js  — IIFE (browser script tag)
+#   dist/index.js         — ESM
+#   dist/index.cjs        — CommonJS
+#   dist/index.d.ts       — Type definitions
+```
 
-### 音频频谱模拟
+## Documentation
 
-128 元素频谱生成器，匹配 WE 规范（0-63 左声道、64-127 右声道），支持三种模式：
+For the complete API reference, type definitions, sub-controller docs, and agent usage examples, see **[API.md](docs/API.md)**.
 
-- **Beats** — 低频脉冲为主，带 bass boost 增益
-- **Melody** — 更平滑的正弦波组合
-- **Mixed** — 混合模式
+## Features
 
-支持振幅调节、帧率控制、渐进淡入淡出、帧间平滑过渡。
+### Audio Spectrum Simulation
 
-### 媒体集成模拟
+128-bin spectrum generator compliant with WE spec (channels 0–63 left, 64–127 right), with three modes:
 
-完整模拟 WE Media Integration 全部 5 个 listener，预置 5 首曲库：
+- **Beats** — Low-frequency pulse emphasis with bass boost gain
+- **Melody** — Smoother sine wave combinations
+- **Mixed** — Hybrid mode
 
-- 播放控制：播放/暂停/停止/切曲/进度控制
-- 自定义元数据：覆盖曲目信息、上传封面图片
-- 自动轮播：可配置轮换间隔
-- 曲目切换时智能过滤（不发送 STOPPED 避免 UI 闪烁）
+Supports amplitude adjustment, frame rate control, progressive fade-in/out, and smooth frame interpolation.
 
-### RGB LED 数据
+### Media Integration Simulation
 
-模拟 LED/CUE 插件加载机制，截获 `setAllDevicesByImageData` 调用：
+Fully simulates all 5 WE Media Integration listeners with a built-in library of 5 tracks:
 
-- 解码原始像素数据为 `ImageData`（可用于 canvas 绘制）
-- 自动提取调色板（网格量化，最多 8 色）
-- 注册帧回调实时监听
-- 手动模拟帧数据（无需依赖插件加载）
+- Playback control: play/pause/stop/track navigation/seek
+- Custom metadata: override track info, upload album art
+- Auto-cycling: configurable rotation interval
+- Smart filtering on track change (skips STOPPED event to avoid UI flicker)
 
-### 生命周期事件模拟
+### RGB LED Data
 
-模拟 WE 暂停/恢复/FPS 变化等生命周期行为：
+Simulates LED/CUE plugin loading, intercepts `setAllDevicesByImageData` calls:
 
-- 调用 `wallpaperPropertyListener.setPaused` 通知壁纸暂停状态
-- 劫持 `requestAnimationFrame` / `setTimeout` / `setInterval`，暂停时积累队列，恢复时依次执行
-- FPS 变化通过 `applyGeneralProperties` 推送
-- 暂停时自动注入 CSS 规则暂停动画（`animation-play-state: paused`）
+- Decodes raw pixel data into `ImageData` (usable with canvas)
+- Auto-extracts color palette (grid quantize, max 8 colors)
+- Registers frame callbacks for real-time monitoring
+- Manually simulate frames (no plugin dependency needed)
 
-### 属性配置控制
+### Lifecycle Events
 
-从 `project.json` 读取 `general.properties` 定义，提供：
+Simulates WE pause/resume/FPS changes and other lifecycle behavior:
 
-- 属性定义查询：类型、值范围、选项列表
-- 可见性条件求值：解析 `.value == X` / `&&` / `||` 等表达式
-- 翻译键丢失检查：定位未翻译的 UI 文本
-- 多语言匹配：按浏览器语言精确匹配 → 语言前缀 → 回退到 en-us
+- Calls `wallpaperPropertyListener.setPaused` to notify wallpaper of pause state
+- Intercepts `requestAnimationFrame` / `setTimeout` / `setInterval`; queues during pause, executes sequentially on resume
+- FPS changes pushed via `applyGeneralProperties`
+- Injects CSS rules on pause to suspend animations (`animation-play-state: paused`)
 
-### 控制面板
+### Property Configuration Control
 
-可视化调试面板，Shadow DOM 隔离宿主页面 CSS 污染：
+Reads `general.properties` definitions from `project.json`, providing:
 
-- **音频模拟控制** — 振幅/低频增益/速度/模式切换（Beats/Melody/Mixed），音频输入开关
-- **媒体播放控制** — 播放/暂停/切曲/自定义曲目/上传封面
-- **RGB 数据实时监控** — 等待状态显示
-- **生命周期控制** — 暂停/恢复/FPS 限制设置
-- **属性查看器** — 搜索、类型筛选（Bool/Slider/Color 等）、可见性筛选（全部/可见/隐藏）、翻译状态筛选（全部/缺失/正常）、键名/名称切换显示
-- **属性编辑器弹窗 V2** — 浮动可拖拽窗口，支持添加/编辑/删除属性：
-  - 键名自动生成 i18n 翻译键（驼峰 → 蛇形）
-  - 翻译编辑器：批量编辑所有语言的翻译文本
-  - 类型切换时 confirm 提示防误操作
-  - Bool 用 checkbox 组，Slider 用 [range + number] 联动
-  - Color 用 picker + WE hex 同步
-  - Combo 选项表格（Label/Value 编辑，增删行）
-  - 翻译键状态提示（是否在 localization 字典中存在）
-- **语言管理** — 语言切换下拉、新增语言下拉（支持 35+ WE 语言代码）、翻译缺失标记
-- **Localization 面板** — 查看当前语言翻译字典的所有条目
-- **时钟显示**、**最小化**、拖拽标题栏移动
+- Property definition queries: type, value range, options list
+- Visibility condition evaluation: parses `.value == X` / `&&` / `||` expressions
+- Missing translation detection: locate untranslated UI text
+- Multi-language matching: exact browser language match → language prefix → fallback to en-us
 
-#### 控制面板属性编辑弹窗
+### Control Panel
 
-属性编辑弹窗 V2 实现了完整的 project.json 属性编辑体验：
+Visual debugging panel with Shadow DOM isolation from host page CSS:
 
-- **基础**：键名（编辑模式锁定）、类型选择（9 种 WE 类型）
-- **i18n**：自动翻译键生成、翻译编辑器（多语言批量编辑）、翻译状态提示
-- **值控件**：Bool 双选 / Slider [range+number] / Color picker+WE hex / Combo 下拉预览 / Text/File/Directory/Group 文本输入
-- **类型专属**：Slider 范围 (Min/Max/Step/Precision/Fraction)、File 视频模式、Directory 点播模式
-- **Combo 选项**：Label + Value 表格编辑，增删行
-- **元数据**：Order / Index / Condition
+- **Audio simulation controls** — Amplitude/bass boost/speed/mode (Beats/Melody/Mixed), audio input toggle
+- **Media playback controls** — Play/pause/skip/custom track/upload album art
+- **RGB data monitoring** — Real-time status display
+- **Lifecycle controls** — Pause/resume/FPS limit
+- **Property viewer** — Search, type filter (Bool/Slider/Color etc.), visibility filter (All/Visible/Hidden), translation filter (All/Missing/OK), key/name toggle
+- **Property Editor V2** — Floating draggable modal with add/edit/delete support:
+  - Auto-generated i18n translation keys (camelCase → snake_case)
+  - Translation editor: batch edit translations for all languages
+  - Type-switch confirmation to prevent accidental data loss
+  - Bool: checkbox group; Slider: [range + number] linked controls
+  - Color: picker + WE hex sync
+  - Combo options table (Label/Value editing, add/delete rows)
+  - Translation key status hints (present in localization dictionary or not)
+- **Language management** — Language switch dropdown, add-language dropdown (35+ WE locale codes), missing-translation markers
+- **Localization panel** — View all entries in the current language's translation dictionary
+- **Clock display**, **minimize**, draggable title bar
 
-### 国际化 (i18n)
+#### Property Editor Modal
 
-控制面板内置 en-US / zh-CN 双语界面，基于 `navigator.language` 自动选择。所有 UI 文本通过 `PanelMessages` 接口管理：
+The V2 property editor modal provides a complete project.json property editing experience:
+
+- **Basic**: key name (locked in edit mode), type selection (9 WE types)
+- **i18n**: auto-generated translation key, translation editor (multi-language batch editing), translation status hints
+- **Value controls**: Bool dual-select / Slider [range+number] / Color picker+WE hex / Combo dropdown preview / Text/File/Directory/Group text input
+- **Type-specific**: Slider range (Min/Max/Step/Precision/Fraction), File video mode, Directory on-demand mode
+- **Combo options**: Label + Value table editing with add/delete rows
+- **Metadata**: Order / Index / Condition
+
+### Internationalization (i18n)
+
+The control panel has built-in en-US / zh-CN bilingual UI, auto-selected based on `navigator.language`. All UI text is managed through the `PanelMessages` interface:
 
 ```typescript
 import { getPanelMessages } from './panel/i18n';
-// 自动根据浏览器语言返回对应翻译
+// Auto-returns translation based on browser language
 console.log(getPanelMessages().amplitude); // "Amplitude" / "振幅"
 ```
 
-属性编辑弹窗支持 **翻译编辑器**，可从 project.json 的 `general.localization` 中读取所有语言的翻译，并在编辑属性时批量修改多语言文本。
+The property editor modal includes a **translation editor** that reads all language translations from `project.json`'s `general.localization` and lets you batch-edit multi-language text when editing properties.
 
-**语言策略**（project.json 读取时）：
+**Language strategy** (when reading project.json):
 
-1. 精确匹配 `navigator.language`（如 `zh-CN`）
-2. 语言前缀匹配（如 `zh`）
-3. 回退到 `en-us`
-4. 第一个可用语言
+1. Exact match of `navigator.language` (e.g. `zh-CN`)
+2. Language prefix match (e.g. `zh`)
+3. Fallback to `en-us`
+4. First available language
 
-### 条件表达式求值器
+### Condition Expression Evaluator
 
-`conditionEvaluator.ts` 完整支持 project.json 属性可见性条件语法：
+`conditionEvaluator.ts` fully supports project.json property visibility condition syntax:
 
-- 比较：`.value == X`、`.value != X`
-- 布尔值：`true`、`false`
-- 数字：整数和浮点数
-- 字符串：`'单引号'` 或 `"双引号"`
-- 组合：`&&` (AND)、`||` (OR)
-- 括号：`(expr)` 分组
+- Comparison: `.value == X`, `.value != X`
+- Booleans: `true`, `false`
+- Numbers: integers and floating-point
+- Strings: `'single quotes'` or `"double quotes"`
+- Combination: `&&` (AND), `||` (OR)
+- Parentheses: `(expr)` grouping
 
 ```typescript
 import { evaluateCondition } from './panel/conditionEvaluator';
 
-// 检查 "showDate" 属性是否可见
+// Check if the "showDate" property is visible
 const visible = evaluateCondition(
   'showDate.value == true',
   (key) => properties.find(p => p.key === key)?.value
 );
 ```
 
-### 环境自动检测
+### Environment Auto-Detection
 
-启动时自动判断运行环境，3 种检测策略：
+Automatically detects the runtime environment on startup using 3 strategies:
 
-1. CEF userAgent 特征
-2. `wallpaperPropertyListener` 是否已被 WE 注入
-3. 加载协议 + dev-kit 标志位
+1. CEF userAgent signature
+2. Whether `wallpaperPropertyListener` has already been injected by WE
+3. Loading protocol + dev-kit flag
 
-检测为真实 WE 环境时自动跳过模拟，不干扰正常壁纸运行。
+Skips simulation automatically when running in a real WE environment without interfering with normal wallpaper operation.
 
-### 音频数据传入开关
+### Audio Data Toggle
 
-支持动态控制音频帧分发，启用时频谱数据推送到 `wallpaperRegisterAudioListener` 注册的回调，关闭时停止推送，不影响其他模块运行。
+Supports dynamic control of audio frame distribution. When enabled, spectrum data is pushed to the callback registered via `wallpaperRegisterAudioListener`; when disabled, pushing stops without affecting other modules.
 
-### wallpaperPropertyListener 补齐
+### wallpaperPropertyListener Shim
 
-自动补充 `setPaused`、`applyGeneralProperties`、`userDirectoryFilesAddedOrChanged`、`userDirectoryFilesRemoved` 方法，确保项目代码在浏览器中不会因缺少 WE API 而报错。使用 `Object.defineProperty` setter 拦截后续赋值，始终补齐缺失方法。
+Automatically shims `setPaused`, `applyGeneralProperties`, `userDirectoryFilesAddedOrChanged`, and `userDirectoryFilesRemoved` methods, ensuring project code doesn't error out in the browser due to missing WE APIs. Uses `Object.defineProperty` setter interception to always fill in missing methods.
 
-### 属性配置控制
+### Property Configuration Control
 
-从 `project.json` 读取 `general.properties` 定义，提供：
+Reads `general.properties` definitions from `project.json`, providing:
 
-- 属性定义查询：类型、值范围、选项列表
-- 可见性条件求值：解析 `.value == X` / `&&` / `||` 等表达式
-- 翻译键丢失检查：定位未翻译的 UI 文本
-- 多语言匹配：按浏览器语言精确匹配 → 语言前缀 → 回退到 en-us
-- 属性序列化：将当前属性列表导出为 project.json 格式
+- Property definition queries: type, value range, options list
+- Visibility condition evaluation: parses `.value == X` / `&&` / `||` expressions
+- Missing translation detection: locate untranslated UI text
+- Multi-language matching: exact browser language match → language prefix → fallback to en-us
+- Property serialization: export current property list as project.json format
 
-## 项目结构
+## Project Structure
 
 ```
 src/
-  index.ts               # 主入口 createWeDevKit()
-  types.ts               # 全部类型定义
-  environment.ts         # 真实 WE 环境检测
-  propertyMock.ts        # wallpaperPropertyListener 补充
-  audioSimulator.ts      # 128 元素频谱生成器
-  mediaMock.ts           # 媒体集成模拟（4 listener + 预置曲库）
-  rgbMock.ts             # RGB LED 插件模拟
-  lifecycleMock.ts       # 生命周期事件（含暂停 CSS 注入）
+  index.ts               # Entry point createWeDevKit()
+  types.ts               # All type definitions
+  environment.ts         # Real WE environment detection
+  propertyMock.ts        # wallpaperPropertyListener shim
+  audioSimulator.ts      # 128-bin spectrum generator
+  mediaMock.ts           # Media integration simulation (4 listeners + built-in tracks)
+  rgbMock.ts             # RGB LED plugin simulation
+  lifecycleMock.ts       # Lifecycle events (with pause CSS injection)
   panel/
-    index.ts             # 控制面板控制器
-    renderer.ts          # DOM 渲染（Shadow DOM 隔离）
-    styles.ts            # 内联样式（含 V2 弹窗、翻译编辑器 CSS）
-    projectJsonReader.ts # project.json 属性解析 + 语言匹配 + 序列化导出
-    conditionEvaluator.ts# 条件表达式求值器（lexer + parser）
-    i18n.ts              # 国际化字典（en-US / zh-CN）
-    callbacks.ts         # 面板回调契约 + 类型定义
-    layout.ts            # DOM 布局工具函数
+    index.ts             # Control panel controller
+    renderer.ts          # DOM rendering (Shadow DOM isolation)
+    styles.ts            # Inline styles (V2 modal, translation editor CSS)
+    projectJsonReader.ts # project.json property parsing + language matching + serialization
+    conditionEvaluator.ts# Condition expression evaluator (lexer + parser)
+    i18n.ts              # Internationalization dictionary (en-US / zh-CN)
+    callbacks.ts         # Panel callback contract + type definitions
+    layout.ts            # DOM layout utilities
     sections/
-      audio.ts           # 音频模拟控制 UI
-      media.ts           # 媒体集成控制 UI
-      lifecycle.ts       # 生命周期控制 UI
-      properties.ts      # 属性查看器 UI（搜索/筛选/翻译/语言管理）
-      rgb.ts             # RGB 数据监控 UI
+      audio.ts           # Audio simulation control UI
+      media.ts           # Media integration control UI
+      lifecycle.ts       # Lifecycle control UI
+      properties.ts      # Property viewer UI (search/filter/translation/language management)
+      rgb.ts             # RGB data monitoring UI
     modal/
-      propertyEditor.ts  # 属性编辑弹窗 V2（拖拽/翻译编辑器/类型控件）
+      propertyEditor.ts  # Property editor modal V2 (draggable/translation editor/type controls)
 ```
 
-## 构建
+## Build
 
 ```bash
 npm install
 npm run build        # → dist/index.global.js + index.js + index.cjs + .d.ts
-npm run dev          # → watch 模式
+npm run dev          # → watch mode
 ```
 
-## 许可证
+## License
 
 GPL-3.0

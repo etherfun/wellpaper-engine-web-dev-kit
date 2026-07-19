@@ -16,6 +16,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./inject": {
+      "types": "./dist/inject.d.ts",
+      "import": "./dist/inject.js",
+      "require": "./dist/inject.cjs"
     }
   },
   "main": "./dist/index.cjs",
@@ -32,6 +37,7 @@
     "prepublishOnly": "tsup"
   },
   "devDependencies": {
+    "@types/node": "^26.1.1",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3"
   }
