@@ -2,7 +2,7 @@
 
 [English](../README.md) | 简体中文
 
-***
+---
 
 非官方 Wallpaper Engine **网页壁纸** 运行时模拟层 — 在浏览器中完整模拟 WE 注入的 API 行为。
 
@@ -27,6 +27,12 @@
 
 > **前置条件：** 请先构建你的项目（例如 `vite build`、`webpack` 或 `tsc`）。`inputDir` 必须包含最终的构建产物（`index.html` + 资源文件）——`prepareDevBuild` 和 `injectIntoHtml` 操作的是**已经构建好的**产物。
 
+**参数说明：**
+- `inputDir` — **你的项目的构建产物目录**（如 `dist/`），即你的项目经过构建工具打包后生成的文件夹，里面必须有 `index.html`、JS/CSS、图片等资源文件
+- `outputDir` — **开发用输出目录**（如 `dev/`）。`prepareDevBuild` 会把 `inputDir` 完整复制到这里，然后往 HTML 注入 dev-kit 脚本并复制 dev-kit 的 JS 文件。完成后直接打开此目录下的 `index.html` 即可调试，**不会修改你的原始构建产物**
+
+> 流程：`inputDir` → 复制到 → `outputDir` → 注入 dev-kit → 打开 `outputDir/index.html` 调试
+
 使用内置的 `inject` 模块，无需手写脚本：
 
 ```javascript
@@ -40,8 +46,8 @@ execSync('vite build', { stdio: 'inherit' });
 
 // 2. 一键注入：复制构建产物 + 注入 dev-kit 脚本
 prepareDevBuild({
-  inputDir: 'dist',
-  outputDir: 'dev',
+  inputDir: 'dist',    // ← 你的项目构建产物目录
+  outputDir: 'dev',    // ← 注入 dev-kit 后的开发目录
   config: { panel: true, audio: true, media: true, rgb: true, lifecycle: true },
 });
 ```

@@ -45,9 +45,19 @@ export interface InjectOptions {
 }
 
 export interface DevBuildOptions {
-  /** 项目构建产物目录（如 dist/） */
+  /**
+   * 项目构建产物目录（如 dist/）。
+   * 这是你的项目经过 vite/webpack/tsc 构建后生成的目录，
+   * 里面必须包含 index.html 等各种资源文件——
+   * prepareDevBuild 会把它完整复制到 outputDir，再往 HTML 中注入 dev-kit 脚本。
+   */
   inputDir: string;
-  /** 输出目录（如 dev/），默认 'dev' */
+  /**
+   * 开发用输出目录（如 dev/），默认 'dev'。
+   * prepareDevBuild 会把 inputDir 完整复制到这里，
+   * 再往 HTML 注入 dev-kit 脚本并复制 dev-kit 的 JS 文件。
+   * 完成后直接在浏览器中打开此目录下的 index.html 即可使用。
+   */
   outputDir?: string;
   /** DevKit 配置（传给 createWeDevKit） */
   config?: Record<string, unknown>;
