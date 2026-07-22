@@ -65,6 +65,7 @@ export interface PanelMessages {
   mp3Position: string;
 
   // 生命周期
+  status: string;
   paused: string;
   running: string;
   pauseBtn: string;
@@ -237,6 +238,7 @@ const DICT_EN: PanelMessages = {
   mp3Duration: 'Duration',
   mp3Position: 'Position',
 
+  status: 'Status',
   paused: 'Paused',
   running: 'Running',
   pauseBtn: 'Pause',
@@ -405,6 +407,7 @@ const DICT_ZH: PanelMessages = {
   mp3Duration: '时长',
   mp3Position: '位置',
 
+  status: '状态',
   paused: '已暂停',
   running: '运行中',
   pauseBtn: '暂停',

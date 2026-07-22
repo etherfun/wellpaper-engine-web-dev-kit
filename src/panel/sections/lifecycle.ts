@@ -10,7 +10,7 @@ export function populateLifecycleSection(container: HTMLElement, cb: PanelCallba
   let lifecyclePaused = false;
 
   const statusRow = createRow();
-  statusRow.appendChild(createLabel(getPanelMessages().paused));
+  statusRow.appendChild(createLabel(getPanelMessages().status));
 
   const statusEl = document.createElement('span');
   statusEl.id = '__we_lifecycle_status';
