@@ -175,10 +175,7 @@ export function showPropertyModal(
     }
   });
 
-  // ---- 2. i18n ----
-  addSeparator('🌐 ' + (ctx.activeLanguage || 'localization'));
-
-  // text (i18n key)
+  // text (i18n key) — 声明在此处供下方翻译区域使用，实际 UI 渲染在翻译区域中
   const textInput = document.createElement('input');
   textInput.type = 'text';
   textInput.className = 'prop-modal-input';
@@ -207,10 +204,7 @@ export function showPropertyModal(
   textInput.addEventListener('input', refreshTextStatus);
   refreshTextStatus();
 
-  const textWrap = document.createElement('div');
-  textWrap.appendChild(textInput);
-  textWrap.appendChild(textStatus);
-  addField(getPanelMessages().propertyText, textWrap);
+  // ---- 2. i18n ----
 
   // displayName (直接显示名)
   const displayNameInput = document.createElement('input');
@@ -830,23 +824,30 @@ export function showPropertyModal(
   });
   btnRow.appendChild(saveBtn);
 
-  body.appendChild(btnRow);
-
   // ---- 7. 翻译编辑器（批量编辑所有语言的翻译文本） ----
+
   if (onSaveI18nTranslation && ctx.availableLanguages.length > 0) {
     const transSep = document.createElement('div');
     transSep.className = 'prop-modal-sep';
-    transSep.textContent = '🌍 ' + getPanelMessages().i18nTranslations;
+    transSep.textContent = '🌍 翻译/本地化';
     body.appendChild(transSep);
 
     const transSection = document.createElement('div');
     transSection.className = 'prop-modal-trans-section';
 
-    // 表头行
-    const headerRow = document.createElement('div');
-    headerRow.className = 'prop-modal-trans-header';
-    headerRow.textContent = getPanelMessages().languageColumn + ' → ' + getPanelMessages().translationColumn;
-    transSection.appendChild(headerRow);
+    // i18n 键名输入（已从上方 i18n 区域移至本地化区域）
+    const textRow = document.createElement('div');
+    textRow.className = 'prop-modal-row';
+    const textLabel = document.createElement('span');
+    textLabel.className = 'prop-modal-row-label';
+    textLabel.textContent = getPanelMessages().propertyText;
+    textRow.appendChild(textLabel);
+    const textWrap = document.createElement('div');
+    textWrap.className = 'prop-modal-row-control';
+    textWrap.appendChild(textInput);
+    textWrap.appendChild(textStatus);
+    textRow.appendChild(textWrap);
+    transSection.appendChild(textRow);
 
     const transInputs: Map<string, HTMLInputElement> = new Map();
     for (const lang of ctx.availableLanguages) {
@@ -863,7 +864,7 @@ export function showPropertyModal(
       inp.className = 'prop-modal-trans-input';
       const existing = ctx.allLocalizations[lang]?.[textInput.value.trim()] ?? '';
       inp.value = existing;
-      inp.placeholder = getPanelMessages().translationPlaceholder;
+      inp.placeholder = '输入翻译...';
       row.appendChild(inp);
       transInputs.set(lang, inp);
 
@@ -878,7 +879,7 @@ export function showPropertyModal(
       for (const [lang, inp] of transInputs) {
         const existing = ctx.allLocalizations[lang]?.[key] ?? '';
         inp.value = existing;
-        inp.placeholder = existing ? '' : getPanelMessages().translationPlaceholder;
+        inp.placeholder = existing ? '' : '输入翻译...';
       }
     });
 
@@ -897,6 +898,8 @@ export function showPropertyModal(
       }
     });
   }
+
+  body.appendChild(btnRow);
 
   host.appendChild(panel);
   document.body.appendChild(host);
