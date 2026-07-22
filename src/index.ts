@@ -17,6 +17,8 @@
  */
 
 import { createAudioSimulator } from './audioSimulator';
+import { createAudioBridge } from './audioBridge';
+import type { InternalAudioBridge } from './audioBridge';
 import { createMp3Player } from './mp3Player';
 import { detectEnvironment } from './environment';
 import { createLifecycleMock } from './lifecycleMock';
@@ -275,106 +277,6 @@ function createInternalState(config: RequiredConfig): InternalState {
 }
 
 // ============================================================
-// 音频帧分发
-// ============================================================
-
-function installAudioDispatch(
-  audioSim: AudioSimulatorController | undefined,
-  mp3Player: Mp3PlayerController | undefined,
-  audioEnabledRef: { current: boolean },
-  state: InternalState
-): void {
-  const w = window as unknown as Record<string, unknown>;
-
-  // 回放前置补丁缓存的 audio listener 调用
-  // （壁纸 bundle.js 在 dev-kit 之前加载时，回调被暂存到 __weAudioPrePatch）
-  const prePatchQueue = w.__weAudioPrePatch as unknown[] | undefined;
-
-  // 移除前置补丁的 Object.defineProperty 拦截，恢复为普通属性
-  // （否则 w.wallpaperRegisterAudioListener = xxx 会被 setter 捕获，不会真正赋值）
-  delete w.wallpaperRegisterAudioListener;
-
-  const listeners = new Set<(data: Float32Array) => void>();
-  const original = w.wallpaperRegisterAudioListener;
-
-  if (Array.isArray(prePatchQueue)) {
-    for (const cb of prePatchQueue) {
-      if (typeof cb === 'function') {
-        listeners.add(cb as (data: Float32Array) => void);
-      }
-    }
-    delete w.__weAudioPrePatch;
-  }
-
-  w.wallpaperRegisterAudioListener = (cb: unknown) => {
-    if (typeof cb === 'function') {
-      listeners.add(cb as (data: Float32Array) => void);
-    }
-    if (typeof original === 'function') {
-      (original as (cb: unknown) => void)(cb);
-    }
-  };
-
-  if (audioSim) {
-    audioSim.start();
-  }
-
-  const dispatchAudioFrame = (frame: Float32Array): void => {
-    if ((window as unknown as Record<string, unknown>)['__weLifecyclePaused'] === true) return;
-    if (!audioEnabledRef.current) return;
-    for (const listener of listeners) {
-      try {
-        // 每个 listener 独立拷贝，避免 listener 修改数组影响其他 listener
-        listener(new Float32Array(frame));
-      } catch {
-        /* ignore listener errors */
-      }
-    }
-  };
-
-  state.onDestroy(() => {
-    audioSim?.stop();
-    mp3Player?.destroy();
-    if (zeroRafId !== null) { cancelAnimationFrame(zeroRafId); zeroRafId = null; }
-    delete (w as unknown as Record<string, unknown>).__weDevKitStartZeroFade;
-    if (typeof original === 'undefined') {
-      delete w.wallpaperRegisterAudioListener;
-    } else {
-      w.wallpaperRegisterAudioListener = original;
-    }
-  });
-
-  // 暴露全局 frame dispatcher 供 audioSim / mp3Player 调用
-  w.__weDevKitDispatchAudio = dispatchAudioFrame;
-
-  // 暴露全局 zero-fade 函数：持续推送全零帧约 1000ms，
-  // 让壁纸视觉层的平滑/计权/峰值保持有充足时间衰减到零。
-  let zeroFrameCount = 0;
-  let zeroRafId: number | null = null;
-  w.__weDevKitStartZeroFade = () => {
-    // 清除已有动画
-    if (zeroRafId !== null) { cancelAnimationFrame(zeroRafId); zeroRafId = null; }
-    zeroFrameCount = 0;
-    const MAX_ZERO_FRAMES = 60; // ~1000ms at 60fps
-
-    function pushZero(): void {
-      // 每帧创建新数组，避免壁纸 listener 修改数组后下一帧读到脏数据
-      const zero = new Float32Array(128);
-      for (const listener of listeners) {
-        try { listener(zero); } catch { /* ignore */ }
-      }
-      zeroFrameCount++;
-      if (zeroFrameCount < MAX_ZERO_FRAMES) {
-        zeroRafId = requestAnimationFrame(pushZero);
-      } else {
-        zeroRafId = null;
-      }
-    }
-    zeroRafId = requestAnimationFrame(pushZero);
-  };
-}
-
-// ============================================================
 // Properties Controller
 // ============================================================
 
@@ -446,21 +348,47 @@ export function createWeDevKit(options?: DevKitConfig): DevKitInstance {
   }
   const lifecycleController = createLifecycleController(lifecycleMock);
 
-  // 8. 音频模拟器 + MP3 播放器 + 分派桥
+  // 8. AudioBridge（统一音频状态机 + 分发中枢）
   let audioSim: AudioSimulatorController | undefined;
   let mp3Player: Mp3PlayerController | undefined;
+  let audioBridge: InternalAudioBridge | undefined;
 
   const needsAudio = config.panel || isAudioEnabled(config);
   if (needsAudio) {
+    audioBridge = createAudioBridge(config.audio.amplitude, state);
+
+    // 回放前置补丁缓存的 audio listener 调用
+    const prePatch = (window as unknown as Record<string, unknown>).__weAudioPrePatch as unknown[] | undefined;
+    if (Array.isArray(prePatch)) {
+      for (const cb of prePatch) {
+        if (typeof cb === 'function') audioBridge.addListener(cb as (d: Float32Array) => void);
+      }
+    }
+    delete (window as unknown as Record<string, unknown>).__weAudioPrePatch;
+
+    // 接管 wallpaperRegisterAudioListener
+    const w = window as unknown as Record<string, unknown>;
+    const original = w.wallpaperRegisterAudioListener;
+    delete w.wallpaperRegisterAudioListener;
+
+    state.onDestroy(() => {
+      if (typeof original === 'undefined') {
+        delete (window as unknown as Record<string, unknown>).wallpaperRegisterAudioListener;
+      } else {
+        (window as unknown as Record<string, unknown>).wallpaperRegisterAudioListener = original;
+      }
+    });
+
+    w.wallpaperRegisterAudioListener = (cb: unknown) => {
+      if (typeof cb === 'function') audioBridge!.addListener(cb as (d: Float32Array) => void);
+      if (typeof original === 'function') (original as (cb: unknown) => void)(cb);
+    };
+
+    // 创建模拟音频生成器（通过 bridge 内部 dispatch 发送帧）
     if (isAudioEnabled(config)) {
       const ac = config.audio;
       audioSim = createAudioSimulator(
-        (frame: Float32Array) => {
-          const dispatcher = (window as unknown as {
-            __weDevKitDispatchAudio?: (frame: Float32Array) => void;
-          }).__weDevKitDispatchAudio;
-          dispatcher?.(frame);
-        },
+        (frame: Float32Array) => { audioBridge!._onFrame(frame); },
         {
           amplitude: ac.amplitude,
           bassBoost: ac.bassBoost,
@@ -469,21 +397,18 @@ export function createWeDevKit(options?: DevKitConfig): DevKitInstance {
         },
         state
       );
+      audioBridge.setAudioSimulator(audioSim);
     }
 
-    // MP3 播放器（真实频谱），必须在 installAudioDispatch 前创建
+    // 创建 MP3 播放器（通过 bridge 内部 dispatch 发送帧）
     mp3Player = createMp3Player(
-      (frame: Float32Array) => {
-        const dispatcher = (window as unknown as {
-          __weDevKitDispatchAudio?: (frame: Float32Array) => void;
-        }).__weDevKitDispatchAudio;
-        dispatcher?.(frame);
-      },
+      (frame: Float32Array) => { audioBridge!._onFrame(frame); },
       state
     );
+    audioBridge.setMp3Player(mp3Player);
 
-    // 安装分派桥并启动音频（修补 wallpaperRegisterAudioListener + 暴露 __weDevKitDispatchAudio）
-    installAudioDispatch(audioSim, mp3Player, audioEnabledRef, state);
+    // 默认启动模拟器
+    if (audioSim) audioSim.start();
   }
 
   // 11. 媒体 Mock
@@ -497,8 +422,6 @@ export function createWeDevKit(options?: DevKitConfig): DevKitInstance {
   // 12. 控制面板
   let panelController: ReturnType<typeof createPanel> | undefined;
   if (isPanelEnabled(config)) {
-    let audioDisableTimer: ReturnType<typeof setTimeout> | null = null;
-    let currentAudioSource: 'simulated' | 'mp3' = 'simulated';
     panelController = createPanel({
       config,
       state,
@@ -506,57 +429,12 @@ export function createWeDevKit(options?: DevKitConfig): DevKitInstance {
       mediaMock,
       lifecycleMock,
       mp3Player,
+      bridge: audioBridge,
       onAudioSourceToggle: (source: 'simulated' | 'mp3') => {
-        currentAudioSource = source;
-        if (source === 'mp3') {
-          // 切换到真实频谱时，完全停止模拟音频，避免并行输入
-          audioSim?.stop();
-          console.log('[WE Dev Kit] Audio source switched to: mp3 (sim stopped)');
-        } else {
-          // 切回模拟数据，仅在音频启用时启动
-          if (audioEnabledRef.current) {
-            audioSim?.start();
-            audioSim?.fadeTo(config.audio.amplitude, 300);
-          }
-          console.log('[WE Dev Kit] Audio source switched to: simulated');
-        }
+        audioBridge?.setSource(source);
       },
       setAudioEnabled: (enabled: boolean) => {
-        // 如果淡出定时器还在运行，取消它（用户快速切换场景）
-        if (audioDisableTimer !== null) {
-          clearTimeout(audioDisableTimer);
-          audioDisableTimer = null;
-        }
-
-        if (enabled) {
-          audioEnabledRef.current = true;
-          // 模拟模式才需启动模拟器并淡入
-          if (currentAudioSource === 'simulated' && audioSim) {
-            audioSim.start();
-            audioSim.setAmplitude(0);
-            audioSim.fadeTo(config.audio.amplitude, 800);
-          }
-          console.log('[WE Dev Kit] Audio enabled');
-        } else {
-          // 持续推送零帧让频谱回落为 0
-          const w2 = window as unknown as Record<string, unknown>;
-          (w2.__weDevKitStartZeroFade as (() => void) | undefined)?.();
-
-          if (currentAudioSource === 'mp3') {
-            // 真实频谱无淡出，立即停止分发
-            audioEnabledRef.current = false;
-            console.log('[WE Dev Kit] Audio disabled (mp3, immediate)');
-          } else {
-            // 模拟模式先淡出再停止分发
-            if (audioSim) audioSim.fadeTo(0, 800);
-            audioDisableTimer = setTimeout(() => {
-              audioEnabledRef.current = false;
-              audioDisableTimer = null;
-              console.log('[WE Dev Kit] Audio disabled (dispatch stopped)');
-            }, 1000);
-            console.log('[WE Dev Kit] Audio disabling (simulated, fade out…)');
-          }
-        }
+        audioBridge?.setEnabled(enabled);
       },
     });
 
@@ -580,7 +458,7 @@ export function createWeDevKit(options?: DevKitConfig): DevKitInstance {
     currentTrackIndex: mediaMock ? mediaMock.currentIndex : 0,
     playbackState: mediaMock ? mediaMock.playbackState : 'stopped',
     isRgbPluginLoaded: state.isRgbPluginLoaded,
-    isAudioEnabled: audioEnabledRef.current,
+    isAudioEnabled: audioBridge?.getState().enabled ?? true,
   };
 
   Object.defineProperty(stateRef, 'isPanelVisible', {

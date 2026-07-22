@@ -14,6 +14,7 @@
  */
 
 import type {
+  AudioBridge,
   AudioSimulatorController,
   InternalState,
   MediaMockController,
@@ -73,7 +74,8 @@ export function renderPanel(
   onLanguageSwitch?: (lang: string) => void,
   messages?: PanelMessages,
   editorContext?: PropertyEditorContext,
-  allLocalizations?: Record<string, Record<string, string>>
+  allLocalizations?: Record<string, Record<string, string>>,
+  bridge?: AudioBridge
 ): PanelController {
   setPanelMessages(messages ?? resolvePanelMessages());
 
@@ -122,7 +124,7 @@ export function renderPanel(
   const body = createBody(panel);
 
   const audioSection = createSection(body, getPanelMessages().sectionAudio, 'audio-content', true, '');
-  populateAudioSection(audioSection, controllers.audio, callbacks);
+  populateAudioSection(audioSection, controllers.audio, callbacks, bridge);
 
   const mediaSection = createSection(body, getPanelMessages().sectionMedia, 'media-content', true, '');
   const mediaUpdater = populateMediaSection(mediaSection, controllers.media, callbacks);

@@ -4,7 +4,7 @@
  * 包含模拟音频控制 + MP3 导入与真实频谱显示。
  */
 
-import type { AudioMode, AudioSimulatorController, AudioSourceType } from '../../types';
+import type { AudioBridge, AudioBridgeState, AudioMode, AudioSimulatorController, AudioSourceType } from '../../types';
 import { getPanelMessages } from '../i18n';
 import { createRow, createSlider, createButton, createLabel } from '../../utils/dom';
 import type { PanelCallbacks } from '../callbacks';
@@ -12,14 +12,11 @@ import type { PanelCallbacks } from '../callbacks';
 export function populateAudioSection(
   container: HTMLElement,
   audio: AudioSimulatorController | undefined,
-  cb: PanelCallbacks
+  cb: PanelCallbacks,
+  bridge?: AudioBridge
 ): void {
-  let audioEnabled = true;
-  let currentSource: AudioSourceType = 'simulated';
-  let mp3Loaded = false;
-  let mp3Playing = false;
-  /** 防重入：防止程序化设置 sourceSelect.value 级联触发 change 事件 */
-  let isSettingSourceProgrammatically = false;
+  // 从 bridge 读取初始状态
+  let currentSource: AudioSourceType = bridge?.getState().source ?? 'simulated';
 
   // ================================================================
   // 音频输入开关
@@ -33,11 +30,14 @@ export function populateAudioSection(
   toggleBtn.className = 'toggle-btn on';
   toggleBtn.textContent = getPanelMessages().audioOn;
   toggleBtn.addEventListener('click', () => {
-    audioEnabled = !audioEnabled;
-    toggleBtn.className = 'toggle-btn ' + (audioEnabled ? 'on' : 'off');
-    toggleBtn.textContent = audioEnabled ? getPanelMessages().audioOn : getPanelMessages().audioOff;
-    toggleBtn.style.borderColor = audioEnabled ? '#4CAF50' : '#e53935';
-    cb.onAudioToggle(audioEnabled);
+    const s = bridge?.getState();
+    if (s) {
+      bridge?.setEnabled(!s.enabled);
+    } else {
+      // 无 bridge 时的兜底逻辑
+      const next = !(bridge?.getState().enabled ?? true);
+      cb.onAudioToggle(next);
+    }
   });
   toggleRow.appendChild(toggleBtn);
   container.appendChild(toggleRow);
@@ -115,18 +115,7 @@ export function populateAudioSection(
   sourceSelect.appendChild(optMp3);
 
   sourceSelect.addEventListener('change', () => {
-    // 防重入：程序化设置 value 时跳过，避免级联
-    if (isSettingSourceProgrammatically) {
-      isSettingSourceProgrammatically = false;
-      return;
-    }
-    currentSource = sourceSelect.value as AudioSourceType;
-    toggleMp3Ui(currentSource);
-    if (currentSource === 'mp3' && !mp3Loaded) {
-      // 未加载文件时自动打开文件选择器
-      fileInput.click();
-    }
-    cb.onAudioSourceToggle(currentSource);
+    bridge?.setSource(sourceSelect.value as AudioSourceType);
   });
   sourceRow.appendChild(sourceSelect);
   container.appendChild(sourceRow);
@@ -162,19 +151,11 @@ export function populateAudioSection(
     const file = fileInput.files?.[0];
     if (!file) return;
     fileNameLabel.textContent = file.name;
-    mp3Loaded = true;
     // 重置文件 input 以便重复选择同一文件
     fileInput.value = '';
     cb.onMp3LoadFile(file);
     // 自动切换到真实频谱模式（仅在当前为模拟模式时）
-    if (currentSource === 'simulated') {
-      currentSource = 'mp3';
-      // 用防重入标志防止 sourceSelect.value 的 change 事件级联
-      isSettingSourceProgrammatically = true;
-      sourceSelect.value = 'mp3';
-      toggleMp3Ui('mp3');
-      cb.onAudioSourceToggle('mp3');
-    }
+    bridge?.onMp3Loaded();
   });
 
   mp3Section.appendChild(fileRow);
@@ -202,26 +183,14 @@ export function populateAudioSection(
   stopBtn.disabled = true;
 
   playBtn.addEventListener('click', () => {
-    mp3Playing = true;
-    playBtn.disabled = true;
-    pauseBtn.disabled = false;
-    stopBtn.disabled = false;
     cb.onMp3Play();
   });
 
   pauseBtn.addEventListener('click', () => {
-    mp3Playing = false;
-    playBtn.disabled = false;
-    pauseBtn.disabled = true;
-    stopBtn.disabled = false;
     cb.onMp3Pause();
   });
 
   stopBtn.addEventListener('click', () => {
-    mp3Playing = false;
-    playBtn.disabled = false;
-    pauseBtn.disabled = true;
-    stopBtn.disabled = true;
     seekSlider.value = '0';
     positionLabel.textContent = '0:00';
     cb.onMp3Stop();
@@ -323,6 +292,29 @@ export function populateAudioSection(
     mp3Section.style.display = source === 'mp3' ? '' : 'none';
   }
 
+  function syncUI(state: AudioBridgeState): void {
+    // 同步开关按钮
+    toggleBtn.className = 'toggle-btn ' + (state.enabled ? 'on' : 'off');
+    toggleBtn.textContent = state.enabled ? getPanelMessages().audioOn : getPanelMessages().audioOff;
+    toggleBtn.style.borderColor = state.enabled ? '#4CAF50' : '#e53935';
+
+    // 同步源选择器（使用无标记设置，避免级联）
+    if (state.source !== currentSource) {
+      currentSource = state.source;
+      sourceSelect.value = state.source;
+    }
+    toggleMp3Ui(state.source);
+
+    // 同步 MP3 播放按钮
+    playBtn.disabled = !state.mp3Loaded || state.mp3Playing;
+    pauseBtn.disabled = !state.mp3Loaded || !state.mp3Playing;
+    stopBtn.disabled = !state.mp3Loaded;
+    seekSlider.disabled = !state.mp3Loaded;
+  }
+
+  // 订阅 bridge 状态变更
+  bridge?.subscribe(syncUI);
+
   function formatTime(seconds: number): string {
     const m = Math.floor(seconds / 60);
     const s = Math.floor(seconds % 60);
@@ -332,26 +324,22 @@ export function populateAudioSection(
   // 对外暴露更新函数，供 panel index 定时刷新进度
   const updateFns = {
     onMp3Load() {
-      mp3Loaded = true;
       playBtn.disabled = false;
       pauseBtn.disabled = true;
       stopBtn.disabled = true;
       seekSlider.disabled = false;
     },
     onMp3Play() {
-      mp3Playing = true;
       playBtn.disabled = true;
       pauseBtn.disabled = false;
       stopBtn.disabled = false;
     },
     onMp3Pause() {
-      mp3Playing = false;
       playBtn.disabled = false;
       pauseBtn.disabled = true;
       stopBtn.disabled = false;
     },
     onMp3Stop() {
-      mp3Playing = false;
       playBtn.disabled = false;
       pauseBtn.disabled = true;
       stopBtn.disabled = true;
@@ -367,8 +355,6 @@ export function populateAudioSection(
       }
     },
     resetFileState() {
-      mp3Loaded = false;
-      mp3Playing = false;
       fileNameLabel.textContent = getPanelMessages().mp3NoFile;
       playBtn.disabled = true;
       pauseBtn.disabled = true;

@@ -360,6 +360,53 @@ export type AudioMode = 'beats' | 'melody' | 'mixed';
 export type AudioSourceType = 'simulated' | 'mp3';
 
 /**
+ * AudioBridge 可观测状态（UI 订阅用）。
+ * 收敛所有音频相关状态到单一来源。
+ */
+export interface AudioBridgeState {
+  enabled: boolean;
+  source: AudioSourceType;
+  mp3Loaded: boolean;
+  mp3Playing: boolean;
+}
+
+/**
+ * AudioBridge — 音频模块唯一状态机和调度中枢。
+ *
+ * 接管所有音频相关状态（启用/源/播放），收敛 listener 注册、
+ * 帧分发、零帧归零、源切换协调等逻辑，消除 window 全局变量
+ * 和分散在 index.ts / panel 中的协调闭包。
+ */
+export interface AudioBridge {
+  /** 注入模拟音频生成器 */
+  setAudioSimulator(sim: AudioSimulatorController): void;
+  /** 注入 MP3 播放器 */
+  setMp3Player(mp3: Mp3PlayerController): void;
+
+  /** 注册 wallpaper 音频回调（替代 window.wallpaperRegisterAudioListener） */
+  addListener(cb: (data: Float32Array) => void): () => void;
+
+  /** 全局音频开关（关闭后通知 UI + 停止所有源 + 零帧归零） */
+  setEnabled(enabled: boolean): void;
+  /** 切换音频源（模拟 ↔ 真实频谱） */
+  setSource(source: AudioSourceType): void;
+
+  /** MP3 生命周期通知（由 panel 回调调用） */
+  onMp3Loaded(): void;
+  onMp3Play(): void;
+  onMp3Pause(): void;
+  onMp3Stop(): void;
+
+  /** 获取只读状态快照 */
+  getState(): AudioBridgeState;
+  /** 订阅状态变更（供 UI 同步），首次调用时自动推送当前状态 */
+  subscribe(cb: (state: AudioBridgeState) => void): () => void;
+
+  /** 销毁，清理所有资源和定时器 */
+  destroy(): void;
+}
+
+/**
  * MP3 播放器控制器
  * 提供 MP3 文件加载、播放控制和真实频谱数据提取。
  */

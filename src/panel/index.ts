@@ -31,6 +31,8 @@ export interface PanelDeps {
   lifecycleMock?: LifecycleMockController;
   /** MP3 播放器（真实频谱） */
   mp3Player?: Mp3PlayerController;
+  /** AudioBridge（统一音频状态机） */
+  bridge?: import('../types').AudioBridge;
   /** Task 0: 音频数据传入开关 */
   setAudioEnabled?: (enabled: boolean) => void;
   /** 音频源切换 */
@@ -38,7 +40,7 @@ export interface PanelDeps {
 }
 
 export function createPanel(deps: PanelDeps) {
-  const { config, state, audioSimulator, mediaMock, lifecycleMock, mp3Player, setAudioEnabled, onAudioSourceToggle } = deps;
+  const { config, state, audioSimulator, mediaMock, lifecycleMock, mp3Player, bridge, setAudioEnabled, onAudioSourceToggle } = deps;
   let panelController: PanelController | null = null;
   let isVisible = false;
   let props: ProjectPropertyDef[] = [];
@@ -92,6 +94,8 @@ export function createPanel(deps: PanelDeps) {
           void mp3Player?.loadFile(file).then(() => {
             // 加载后自动播放
             mp3Player?.play();
+            bridge?.onMp3Loaded();
+            bridge?.onMp3Play();
             // 通知 UI 更新
             if (panelController) {
               const audioSection = panelController.sections.audio as unknown as Record<string, unknown>;
@@ -101,18 +105,14 @@ export function createPanel(deps: PanelDeps) {
             }
           });
         },
-        onMp3Play: () => mp3Player?.play(),
+        onMp3Play: () => { mp3Player?.play(); bridge?.onMp3Play(); },
         onMp3Pause: () => {
           mp3Player?.pause();
-          // 持续推送零帧让频谱回落为 0
-          const w = window as unknown as Record<string, unknown>;
-          (w.__weDevKitStartZeroFade as (() => void) | undefined)?.();
+          bridge?.onMp3Pause();
         },
         onMp3Stop: () => {
           mp3Player?.stop();
-          // 持续推送零帧让频谱回落为 0
-          const w = window as unknown as Record<string, unknown>;
-          (w.__weDevKitStartZeroFade as (() => void) | undefined)?.();
+          bridge?.onMp3Stop();
         },
         onMp3Seek: (pct: number) => mp3Player?.seek(pct),
         onMp3Volume: (v: number) => mp3Player?.setVolume(v),
@@ -122,7 +122,7 @@ export function createPanel(deps: PanelDeps) {
         onAudioSourceToggle: (() => {
           let lastSource: 'simulated' | 'mp3' = 'simulated';
           return (source: 'simulated' | 'mp3') => {
-            if (source === lastSource) return; // 幂等：同一源不重复触发
+            if (source === lastSource) return;
             lastSource = source;
             mp3Player?.setActive(source === 'mp3');
             onAudioSourceToggle?.(source);
@@ -199,7 +199,8 @@ export function createPanel(deps: PanelDeps) {
         activeLanguage: appliedLanguage,
         availableLanguages,
       },
-      allLocalizations
+      allLocalizations,
+      bridge
     );
 
     if (mediaMock) {
