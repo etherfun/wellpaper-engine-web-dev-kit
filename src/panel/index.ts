@@ -104,15 +104,15 @@ export function createPanel(deps: PanelDeps) {
         onMp3Play: () => mp3Player?.play(),
         onMp3Pause: () => {
           mp3Player?.pause();
-          // 发送零帧让频谱回落为 0
+          // 持续推送零帧让频谱回落为 0
           const w = window as unknown as Record<string, unknown>;
-          (w.__weDevKitZeroFrame as (() => void) | undefined)?.();
+          (w.__weDevKitStartZeroFade as (() => void) | undefined)?.();
         },
         onMp3Stop: () => {
           mp3Player?.stop();
-          // 发送零帧让频谱回落为 0
+          // 持续推送零帧让频谱回落为 0
           const w = window as unknown as Record<string, unknown>;
-          (w.__weDevKitZeroFrame as (() => void) | undefined)?.();
+          (w.__weDevKitStartZeroFade as (() => void) | undefined)?.();
         },
         onMp3Seek: (pct: number) => mp3Player?.seek(pct),
         onMp3Volume: (v: number) => mp3Player?.setVolume(v),

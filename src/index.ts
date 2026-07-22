@@ -335,6 +335,8 @@ function installAudioDispatch(
   state.onDestroy(() => {
     audioSim?.stop();
     mp3Player?.destroy();
+    if (zeroTimerId !== null) { clearInterval(zeroTimerId); zeroTimerId = null; }
+    delete (w as unknown as Record<string, unknown>).__weDevKitStartZeroFade;
     if (typeof original === 'undefined') {
       delete w.wallpaperRegisterAudioListener;
     } else {
@@ -345,12 +347,23 @@ function installAudioDispatch(
   // 暴露全局 frame dispatcher 供 audioSim / mp3Player 调用
   w.__weDevKitDispatchAudio = dispatchAudioFrame;
 
-  // 暴露零帧分派：向所有 listener 推一个全零帧，让频谱回落为 0
-  w.__weDevKitZeroFrame = () => {
+  // 暴露零帧分派：持续推送全零帧约 250ms，让视觉层的平滑/计权充分回零
+  let zeroTimerId: ReturnType<typeof setInterval> | null = null;
+  w.__weDevKitStartZeroFade = () => {
+    // 清除已有定时器
+    if (zeroTimerId !== null) { clearInterval(zeroTimerId); zeroTimerId = null; }
     const zero = new Float32Array(128);
-    for (const listener of listeners) {
-      try { listener(zero); } catch { /* ignore */ }
-    }
+    let count = 0;
+    const MAX_ZERO_FRAMES = 15; // ~250ms at ~60fps (RAF) / 16ms interval
+    zeroTimerId = setInterval(() => {
+      for (const listener of listeners) {
+        try { listener(zero); } catch { /* ignore */ }
+      }
+      count++;
+      if (count >= MAX_ZERO_FRAMES) {
+        if (zeroTimerId !== null) { clearInterval(zeroTimerId); zeroTimerId = null; }
+      }
+    }, 16);
   };
 }
 
@@ -518,9 +531,9 @@ export function createWeDevKit(options?: DevKitConfig): DevKitInstance {
           }
           console.log('[WE Dev Kit] Audio enabled');
         } else {
-          // 先发送零帧让频谱回落为 0
+          // 持续推送零帧让频谱回落为 0
           const w2 = window as unknown as Record<string, unknown>;
-          (w2.__weDevKitZeroFrame as (() => void) | undefined)?.();
+          (w2.__weDevKitStartZeroFade as (() => void) | undefined)?.();
 
           if (currentAudioSource === 'mp3') {
             // 真实频谱无淡出，立即停止分发
