@@ -335,7 +335,7 @@ function installAudioDispatch(
   state.onDestroy(() => {
     audioSim?.stop();
     mp3Player?.destroy();
-    if (zeroTimerId !== null) { clearInterval(zeroTimerId); zeroTimerId = null; }
+    if (zeroRafId !== null) { cancelAnimationFrame(zeroRafId); zeroRafId = null; }
     delete (w as unknown as Record<string, unknown>).__weDevKitStartZeroFade;
     if (typeof original === 'undefined') {
       delete w.wallpaperRegisterAudioListener;
@@ -347,23 +347,29 @@ function installAudioDispatch(
   // 暴露全局 frame dispatcher 供 audioSim / mp3Player 调用
   w.__weDevKitDispatchAudio = dispatchAudioFrame;
 
-  // 暴露零帧分派：持续推送全零帧约 250ms，让视觉层的平滑/计权充分回零
-  let zeroTimerId: ReturnType<typeof setInterval> | null = null;
+  // 暴露全局 zero-fade 函数：持续推送全零帧约 1000ms，
+  // 让壁纸视觉层的平滑/计权/峰值保持有充足时间衰减到零。
+  let zeroFrameCount = 0;
+  let zeroRafId: number | null = null;
   w.__weDevKitStartZeroFade = () => {
-    // 清除已有定时器
-    if (zeroTimerId !== null) { clearInterval(zeroTimerId); zeroTimerId = null; }
+    // 清除已有动画
+    if (zeroRafId !== null) { cancelAnimationFrame(zeroRafId); zeroRafId = null; }
+    zeroFrameCount = 0;
     const zero = new Float32Array(128);
-    let count = 0;
-    const MAX_ZERO_FRAMES = 15; // ~250ms at ~60fps (RAF) / 16ms interval
-    zeroTimerId = setInterval(() => {
+    const MAX_ZERO_FRAMES = 60; // ~1000ms at 60fps
+
+    function pushZero(): void {
       for (const listener of listeners) {
         try { listener(zero); } catch { /* ignore */ }
       }
-      count++;
-      if (count >= MAX_ZERO_FRAMES) {
-        if (zeroTimerId !== null) { clearInterval(zeroTimerId); zeroTimerId = null; }
+      zeroFrameCount++;
+      if (zeroFrameCount < MAX_ZERO_FRAMES) {
+        zeroRafId = requestAnimationFrame(pushZero);
+      } else {
+        zeroRafId = null;
       }
-    }, 16);
+    }
+    zeroRafId = requestAnimationFrame(pushZero);
   };
 }
 
