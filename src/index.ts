@@ -321,6 +321,7 @@ function installAudioDispatch(
 
   const dispatchAudioFrame = (frame: Float32Array): void => {
     if ((window as unknown as Record<string, unknown>)['__weLifecyclePaused'] === true) return;
+    if (!audioEnabledRef.current) return;
     const arr = Array.from(frame);
     for (const listener of listeners) {
       try {
@@ -343,6 +344,14 @@ function installAudioDispatch(
 
   // 暴露全局 frame dispatcher 供 audioSim / mp3Player 调用
   w.__weDevKitDispatchAudio = dispatchAudioFrame;
+
+  // 暴露零帧分派：向所有 listener 推一个全零帧，让频谱回落为 0
+  w.__weDevKitZeroFrame = () => {
+    const zero = new Float32Array(128);
+    for (const listener of listeners) {
+      try { listener(zero); } catch { /* ignore */ }
+    }
+  };
 }
 
 // ============================================================
@@ -469,6 +478,7 @@ export function createWeDevKit(options?: DevKitConfig): DevKitInstance {
   let panelController: ReturnType<typeof createPanel> | undefined;
   if (isPanelEnabled(config)) {
     let audioDisableTimer: ReturnType<typeof setTimeout> | null = null;
+    let currentAudioSource: 'simulated' | 'mp3' = 'simulated';
     panelController = createPanel({
       config,
       state,
@@ -477,16 +487,19 @@ export function createWeDevKit(options?: DevKitConfig): DevKitInstance {
       lifecycleMock,
       mp3Player,
       onAudioSourceToggle: (source: 'simulated' | 'mp3') => {
+        currentAudioSource = source;
         if (source === 'mp3') {
-          // 切换到真实频谱时，降低模拟音频的振幅避免干扰
-          audioSim?.setAmplitude(0);
-          audioSim?.fadeTo(0, 300);
+          // 切换到真实频谱时，完全停止模拟音频，避免并行输入
+          audioSim?.stop();
+          console.log('[WE Dev Kit] Audio source switched to: mp3 (sim stopped)');
         } else {
-          // 切回模拟数据时恢复振幅
-          audioSim?.setAmplitude(0);
-          audioSim?.fadeTo(config.audio.amplitude, 300);
+          // 切回模拟数据，仅在音频启用时启动
+          if (audioEnabledRef.current) {
+            audioSim?.start();
+            audioSim?.fadeTo(config.audio.amplitude, 300);
+          }
+          console.log('[WE Dev Kit] Audio source switched to: simulated');
         }
-        console.log(`[WE Dev Kit] Audio source switched to: ${source}`);
       },
       setAudioEnabled: (enabled: boolean) => {
         // 如果淡出定时器还在运行，取消它（用户快速切换场景）
@@ -497,22 +510,32 @@ export function createWeDevKit(options?: DevKitConfig): DevKitInstance {
 
         if (enabled) {
           audioEnabledRef.current = true;
-          if (audioSim) {
-            audioSim.setAmplitude(0); // 从 0 开始淡入
+          // 模拟模式才需启动模拟器并淡入
+          if (currentAudioSource === 'simulated' && audioSim) {
+            audioSim.start();
+            audioSim.setAmplitude(0);
             audioSim.fadeTo(config.audio.amplitude, 800);
           }
-          console.log('[WE Dev Kit] Audio enabled (fade in)');
+          console.log('[WE Dev Kit] Audio enabled');
         } else {
-          // 先淡出到 0，完成后再阻止分发
-          if (audioSim) {
-            audioSim.fadeTo(0, 800);
-          }
-          audioDisableTimer = setTimeout(() => {
+          // 先发送零帧让频谱回落为 0
+          const w2 = window as unknown as Record<string, unknown>;
+          (w2.__weDevKitZeroFrame as (() => void) | undefined)?.();
+
+          if (currentAudioSource === 'mp3') {
+            // 真实频谱无淡出，立即停止分发
             audioEnabledRef.current = false;
-            audioDisableTimer = null;
-            console.log('[WE Dev Kit] Audio disabled (dispatch stopped)');
-          }, 1000); // 800ms 淡出 + 200ms 余量
-          console.log('[WE Dev Kit] Audio disabling (fade out…)');
+            console.log('[WE Dev Kit] Audio disabled (mp3, immediate)');
+          } else {
+            // 模拟模式先淡出再停止分发
+            if (audioSim) audioSim.fadeTo(0, 800);
+            audioDisableTimer = setTimeout(() => {
+              audioEnabledRef.current = false;
+              audioDisableTimer = null;
+              console.log('[WE Dev Kit] Audio disabled (dispatch stopped)');
+            }, 1000);
+            console.log('[WE Dev Kit] Audio disabling (simulated, fade out…)');
+          }
         }
       },
     });
