@@ -17,7 +17,7 @@ export function populateRgbSection(container: HTMLElement): PanelRgbUpdater {
 
   const canvas = document.createElement('canvas');
   canvas.id = '__we_rgb_canvas';
-  canvas.style.cssText = 'width: 100%; height: 32px; border-radius: 4px; image-rendering: pixelated; background: #111;';
+  canvas.style.cssText = 'width: 100%; height: auto; border-radius: 4px; image-rendering: pixelated; background: #111;';
   canvas.width = 100;
   canvas.height = 20;
   canvasRow.appendChild(canvas);
@@ -32,6 +32,17 @@ export function populateRgbSection(container: HTMLElement): PanelRgbUpdater {
   const updateRgbFrame: PanelRgbUpdater = (frame) => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+
+    // 根据帧数据动态调整 canvas 画布尺寸
+    canvas.width = frame.width;
+    canvas.height = frame.height;
+
+    // 按宽高比更新显示高度，完全由数据尺寸决定，不做硬性截断
+    const clientW = canvas.clientWidth || 300;
+    const displayH = Math.round(clientW * (frame.height / frame.width));
+    canvas.style.height = `${displayH}px`;
+    // 不低于 8px 以免完全看不见
+    if (displayH < 8) canvas.style.height = '8px';
 
     const imgData = ctx.createImageData(frame.width, frame.height);
     for (let i = 0; i < frame.pixels.length; i += 3) {
