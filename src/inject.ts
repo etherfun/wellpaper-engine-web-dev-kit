@@ -71,6 +71,11 @@ export interface DevBuildOptions {
 
 // ---- Helpers ----
 
+/** 前置补丁：在所有 body 脚本之前注入，缓存对 wallpaperRegisterAudioListener 的调用 */
+const PRE_PATCH = `<script>
+(function(){var q=[],f=function(cb){if(typeof cb==='function')q.push(cb)};Object.defineProperty(window,'wallpaperRegisterAudioListener',{set:f,get:function(){return f},configurable:true});window.__weAudioPrePatch=q})();
+</script>`;
+
 function defaultConfig(): Record<string, unknown> {
   return {
     panel: true,
@@ -114,30 +119,38 @@ export function injectIntoHtml(html: string, options?: InjectOptions): string {
   const snippet = buildSnippet(opts);
   const insertAt = opts.insertAt ?? 'before-body-end';
 
+  // 1) 注入前置补丁（在所有脚本之前，缓存 wallpaperRegisterAudioListener 调用）
+  let result = html;
+  const bodyMatch = result.match(/<body[^>]*>/i);
+  if (bodyMatch && bodyMatch.index != null) {
+    const pos = bodyMatch.index + bodyMatch[0].length;
+    result = result.slice(0, pos) + '\n' + PRE_PATCH + '\n' + result.slice(pos);
+  }
+
+  // 2) 注入主 dev-kit 脚本
   switch (insertAt) {
     case 'before-body-end': {
-      const idx = html.lastIndexOf('</body>');
-      if (idx !== -1) return html.slice(0, idx) + snippet + html.slice(idx);
-      return html + snippet;
+      const idx = result.lastIndexOf('</body>');
+      if (idx !== -1) return result.slice(0, idx) + snippet + result.slice(idx);
+      return result + snippet;
     }
     case 'after-body-start': {
-      const m = html.match(/<body[^>]*>/i);
+      const m = result.match(/<body[^>]*>/i);
       if (m && m.index != null) {
-        const pos = m.index + m[0].length;
-        return html.slice(0, pos) + snippet + html.slice(pos);
+        const pos2 = m.index + m[0].length;
+        return result.slice(0, pos2) + snippet + result.slice(pos2);
       }
-      return html + snippet;
+      return result + snippet;
     }
     case 'before-head-end': {
-      const idx = html.lastIndexOf('</head>');
-      if (idx !== -1) return html.slice(0, idx) + snippet + html.slice(idx);
-      // fallback: inject before first <body>
-      const body = html.indexOf('<body');
-      if (body !== -1) return html.slice(0, body) + snippet + html.slice(body);
-      return snippet + html;
+      const idx = result.lastIndexOf('</head>');
+      if (idx !== -1) return result.slice(0, idx) + snippet + result.slice(idx);
+      const body = result.indexOf('<body');
+      if (body !== -1) return result.slice(0, body) + snippet + result.slice(body);
+      return snippet + result;
     }
     default:
-      return html + snippet;
+      return result + snippet;
   }
 }
 

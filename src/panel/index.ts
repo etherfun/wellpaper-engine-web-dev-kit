@@ -11,6 +11,7 @@ import type {
   LifecycleMockController,
   MediaMockController,
   MockTrack,
+  Mp3PlayerController,
   ProjectPropertyDef,
   RgbFrameData,
 } from '../types';
@@ -28,12 +29,16 @@ export interface PanelDeps {
   audioSimulator?: AudioSimulatorController;
   mediaMock?: MediaMockController;
   lifecycleMock?: LifecycleMockController;
+  /** MP3 播放器（真实频谱） */
+  mp3Player?: Mp3PlayerController;
   /** Task 0: 音频数据传入开关 */
   setAudioEnabled?: (enabled: boolean) => void;
+  /** 音频源切换 */
+  onAudioSourceToggle?: (source: 'simulated' | 'mp3') => void;
 }
 
 export function createPanel(deps: PanelDeps) {
-  const { config, state, audioSimulator, mediaMock, lifecycleMock, setAudioEnabled } = deps;
+  const { config, state, audioSimulator, mediaMock, lifecycleMock, mp3Player, setAudioEnabled, onAudioSourceToggle } = deps;
   let panelController: PanelController | null = null;
   let isVisible = false;
   let props: ProjectPropertyDef[] = [];
@@ -83,6 +88,36 @@ export function createPanel(deps: PanelDeps) {
         onMediaThumbnail: (dataUri) => mediaMock?.setCustomThumbnail(dataUri),
         onMediaSeek: (pct) => mediaMock?.seek(pct),
         onAudioToggle: (enabled) => setAudioEnabled?.(enabled),
+        onMp3LoadFile: (file: File) => {
+          void mp3Player?.loadFile(file).then(() => {
+            // 加载后自动播放
+            mp3Player?.play();
+            // 通知 UI 更新
+            if (panelController) {
+              const audioSection = panelController.sections.audio as unknown as Record<string, unknown>;
+              const fns = audioSection.__mp3UpdateFns as Record<string, () => void> | undefined;
+              fns?.onMp3Load();
+              fns?.onMp3Play();
+            }
+          });
+        },
+        onMp3Play: () => mp3Player?.play(),
+        onMp3Pause: () => mp3Player?.pause(),
+        onMp3Stop: () => mp3Player?.stop(),
+        onMp3Seek: (pct: number) => mp3Player?.seek(pct),
+        onMp3Volume: (v: number) => mp3Player?.setVolume(v),
+        onMp3Sensitivity: (v: number) => mp3Player?.setSensitivity(v),
+        onMp3Ceiling: (v: number) => mp3Player?.setCeiling(v),
+        onMp3LoopToggle: (enabled: boolean) => mp3Player?.setLoop(enabled),
+        onAudioSourceToggle: (() => {
+          let lastSource: 'simulated' | 'mp3' = 'simulated';
+          return (source: 'simulated' | 'mp3') => {
+            if (source === lastSource) return; // 幂等：同一源不重复触发
+            lastSource = source;
+            mp3Player?.setActive(source === 'mp3');
+            onAudioSourceToggle?.(source);
+          };
+        })(),
         onLifecycleToggle: (paused: boolean) => {
           if (paused) lifecycleMock?.simulatePause();
           else lifecycleMock?.simulateResume();
@@ -167,6 +202,29 @@ export function createPanel(deps: PanelDeps) {
         const updater = panelController!.getMediaUpdater();
         updater(track, pbs, position, duration, trackIndex);
       }, 500);
+    }
+
+    // MP3 播放器进度刷新
+    if (mp3Player && panelController) {
+      const mp3RefreshTimer = setInterval(() => {
+        if (!mp3Player.isLoaded) return;
+        const ct = mp3Player.currentTime;
+        const dur = mp3Player.duration;
+        const audioSection = panelController!.sections.audio as unknown as Record<string, unknown>;
+        const fns = audioSection.__mp3UpdateFns as
+          | { updatePosition: (ct: number, dur: number) => void; onMp3Stop: () => void }
+          | undefined;
+        if (fns) {
+          if (dur > 0) {
+            fns.updatePosition(ct, dur);
+          }
+          // 检测播放结束
+          if (mp3Player.isLoaded && !mp3Player.isPlaying && ct > 0 && dur > 0 && ct >= dur - 0.5) {
+            fns.onMp3Stop();
+          }
+        }
+      }, 250);
+      state.onDestroy(() => clearInterval(mp3RefreshTimer));
     }
 
     (window as unknown as { __weDevKitPropertiesChanged?: (p: ProjectPropertyDef[]) => void }).__weDevKitPropertiesChanged = (newProps: ProjectPropertyDef[]) => {

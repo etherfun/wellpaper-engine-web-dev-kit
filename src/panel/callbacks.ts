@@ -28,6 +28,26 @@ export interface PanelCallbacks {
   onMediaSeek: (pct: number) => void;
   onLifecycleToggle: (paused: boolean) => void;
   onLifecycleFps: (fps: number) => void;
+  /** MP3 文件加载 */
+  onMp3LoadFile: (file: File) => void;
+  /** MP3 播放 */
+  onMp3Play: () => void;
+  /** MP3 暂停 */
+  onMp3Pause: () => void;
+  /** MP3 停止 */
+  onMp3Stop: () => void;
+  /** MP3 跳转（百分比） */
+  onMp3Seek: (percent: number) => void;
+  /** MP3 音量 */
+  onMp3Volume: (v: number) => void;
+  /** 切换音频源（simulated | mp3） */
+  onAudioSourceToggle: (source: 'simulated' | 'mp3') => void;
+  /** MP3 频谱灵敏度 0.1-1 */
+  onMp3Sensitivity: (v: number) => void;
+  /** MP3 输出上限 0.1-1 */
+  onMp3Ceiling: (v: number) => void;
+  /** MP3 循环播放开关 */
+  onMp3LoopToggle: (enabled: boolean) => void;
   onClose: () => void;
   onMinimize: () => void;
   /** 保存 i18n 翻译（当用户在属性编辑器中编辑翻译时触发） */

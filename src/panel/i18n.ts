@@ -46,6 +46,24 @@ export interface PanelMessages {
   // RGB
   waitingRgb: string;
 
+  // MP3 导入
+  mp3Import: string;
+  mp3SelectFile: string;
+  mp3FileName: string;
+  mp3SourceSimulated: string;
+  mp3SourceReal: string;
+  mp3Play: string;
+  mp3Pause: string;
+  mp3Stop: string;
+  mp3NoFile: string;
+  mp3Volume: string;
+  mp3Sensitivity: string;
+  mp3Ceiling: string;
+  mp3Loop: string;
+  mp3Seek: string;
+  mp3Duration: string;
+  mp3Position: string;
+
   // 生命周期
   paused: string;
   running: string;
@@ -139,7 +157,6 @@ export interface PanelMessages {
   addOption: string;
   propertyText: string;
   propertyDisplayName: string;
-  propertyIndex: string;
   propertyConditionHelp: string;
   typeChangeConfirm: string;
   continueChange: string;
@@ -174,11 +191,11 @@ const DICT_EN: PanelMessages = {
   restore: 'Restore',
   close: 'Close',
 
-  sectionAudio: '▶ Audio Simulator',
-  sectionMedia: '▶ Media Integration',
-  sectionRgb: '▶ RGB LED',
-  sectionLifecycle: '▶ Lifecycle',
-  sectionProperties: '▶ Properties',
+  sectionAudio: 'Audio Simulator',
+  sectionMedia: 'Media Integration',
+  sectionRgb: 'RGB LED',
+  sectionLifecycle: 'Lifecycle',
+  sectionProperties: 'Properties',
 
   audioInput: 'Audio Input',
   amplitude: 'Amplitude',
@@ -203,10 +220,27 @@ const DICT_EN: PanelMessages = {
 
   waitingRgb: 'Waiting for RGB data…',
 
+  mp3Import: 'MP3 Import',
+  mp3SelectFile: 'Select MP3 File',
+  mp3FileName: 'Filename',
+  mp3SourceSimulated: 'Simulated',
+  mp3SourceReal: 'Real MP3',
+  mp3Play: 'Play',
+  mp3Pause: 'Pause',
+  mp3Stop: 'Stop',
+  mp3NoFile: '(no file loaded)',
+  mp3Volume: 'Volume',
+  mp3Sensitivity: 'Sensitivity',
+  mp3Ceiling: 'Ceiling',
+  mp3Loop: 'Loop',
+  mp3Seek: 'Seek',
+  mp3Duration: 'Duration',
+  mp3Position: 'Position',
+
   paused: 'Paused',
-  running: '▶ Running',
-  pauseBtn: '⏸ Pause',
-  resumeBtn: '▶ Resume',
+  running: 'Running',
+  pauseBtn: 'Pause',
+  resumeBtn: 'Resume',
   fpsLimit: 'FPS Limit',
   unlimited: 'Unlimited',
 
@@ -272,14 +306,14 @@ const DICT_EN: PanelMessages = {
   optionNoOptions: '(no options)',
   audioOn: 'ON',
   audioOff: 'OFF',
-  rgbLoaded: '✅ loaded',
-  rgbLoading: '⏳ loading…',
-  saveButton: '💾 Save',
+  rgbLoaded: 'loaded',
+  rgbLoading: 'loading…',
+  saveButton: 'Save',
   addLangPlaceholder: 'Add language…',
   placeholderAutoGen: 'Leave empty for auto-generate',
-  hintAutoGen: '↳ Auto-generated: ',
+  hintAutoGen: 'Auto-generated: ',
   placeholderIndex: '(optional)',
-  translationHeader: '📖 Translation / Localization',
+  translationHeader: 'Translation / Localization',
   translationUntranslated: '(untranslated)',
   translationNoLoc: 'project.json has no general.localization section',
   defaultMin: 'Min',
@@ -292,7 +326,6 @@ const DICT_EN: PanelMessages = {
   addOption: '+ Add',
   propertyText: 'i18n key',
   propertyDisplayName: 'Display name',
-  propertyIndex: 'Index',
   propertyConditionHelp: 'e.g. propA.value == 1 && propB.value > 0',
   typeChangeConfirm: 'Changing the type will clear the current default value. Continue?',
   continueChange: 'Continue',
@@ -317,7 +350,7 @@ const DICT_EN: PanelMessages = {
   noOptionsLabel: '(no options)',
   keyRequiredAlert: 'Key is required',
   fieldRequired: 'required',
-  sectionLocalization: '▶ Localization',
+  sectionLocalization: 'Localization',
 };
 
 const DICT_ZH: PanelMessages = {
@@ -326,11 +359,11 @@ const DICT_ZH: PanelMessages = {
   restore: '还原',
   close: '关闭',
 
-  sectionAudio: '▶ 音频模拟',
-  sectionMedia: '▶ 媒体集成',
-  sectionRgb: '▶ RGB 灯光',
-  sectionLifecycle: '▶ 生命周期',
-  sectionProperties: '▶ 配置项',
+  sectionAudio: '音频模拟',
+  sectionMedia: '媒体集成',
+  sectionRgb: 'RGB 灯光',
+  sectionLifecycle: '生命周期',
+  sectionProperties: '配置项',
 
   audioInput: '音频输入',
   amplitude: '振幅',
@@ -355,10 +388,27 @@ const DICT_ZH: PanelMessages = {
 
   waitingRgb: '等待 RGB 数据…',
 
+  mp3Import: 'MP3 导入',
+  mp3SelectFile: '选择 MP3 文件',
+  mp3FileName: '文件名',
+  mp3SourceSimulated: '模拟数据',
+  mp3SourceReal: '真实频谱',
+  mp3Play: '播放',
+  mp3Pause: '暂停',
+  mp3Stop: '停止',
+  mp3NoFile: '（未加载文件）',
+  mp3Volume: '音量',
+  mp3Sensitivity: '灵敏度',
+  mp3Ceiling: '上限',
+  mp3Loop: '循环播放',
+  mp3Seek: '进度',
+  mp3Duration: '时长',
+  mp3Position: '位置',
+
   paused: '已暂停',
-  running: '▶ 运行中',
-  pauseBtn: '⏸ 暂停',
-  resumeBtn: '▶ 继续',
+  running: '运行中',
+  pauseBtn: '暂停',
+  resumeBtn: '继续',
   fpsLimit: 'FPS 限制',
   unlimited: '不限',
 
@@ -375,7 +425,6 @@ const DICT_ZH: PanelMessages = {
   visibleStat: '可见',
   propertyText: 'i18n 键名',
   propertyDisplayName: '显示名称',
-  propertyIndex: '索引',
   propertyConditionHelp: '例：propA.value == 1 && propB.value > 0',
   typeChangeConfirm: '切换类型会清空当前默认值，确定继续吗？',
   continueChange: '继续',
@@ -400,7 +449,7 @@ const DICT_ZH: PanelMessages = {
   noOptionsLabel: '（无选项）',
   keyRequiredAlert: '键名不能为空',
   fieldRequired: '必填',
-  sectionLocalization: '▶ 翻译',
+  sectionLocalization: '翻译',
   hiddenStat: '隐藏',
   conditionMet: '条件满足，用户可见',
   conditionNotMet: '条件未满足，用户隐藏',
@@ -452,14 +501,14 @@ const DICT_ZH: PanelMessages = {
   optionNoOptions: '(无选项)',
   audioOn: '开启',
   audioOff: '关闭',
-  rgbLoaded: '✅ 已加载',
-  rgbLoading: '⏳ 加载中…',
-  saveButton: '💾 保存修改',
+  rgbLoaded: '已加载',
+  rgbLoading: '加载中…',
+  saveButton: '保存修改',
   addLangPlaceholder: '添加语言…',
   placeholderAutoGen: '留空则使用键名自动生成',
-  hintAutoGen: '↳ 自动生成: ',
+  hintAutoGen: '自动生成: ',
   placeholderIndex: '(可选)',
-  translationHeader: '📖 翻译/本地化',
+  translationHeader: '翻译/本地化',
   translationUntranslated: '(未翻译)',
   translationNoLoc: 'project.json 中未定义通用章节 (general.localization)',
   defaultMin: '最小值',

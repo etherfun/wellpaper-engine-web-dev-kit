@@ -356,6 +356,50 @@ export interface AudioSimulatorController {
 
 export type AudioMode = 'beats' | 'melody' | 'mixed';
 
+/** 音频源类型：模拟数据 或 真实 MP3 频谱 */
+export type AudioSourceType = 'simulated' | 'mp3';
+
+/**
+ * MP3 播放器控制器
+ * 提供 MP3 文件加载、播放控制和真实频谱数据提取。
+ */
+export interface Mp3PlayerController {
+  /** 加载 MP3 文件（自动解码） */
+  loadFile(file: File): Promise<void>;
+  /** 播放 */
+  play(): void;
+  /** 暂停 */
+  pause(): void;
+  /** 停止 */
+  stop(): void;
+  /** 按百分比 (0-100) 跳转 */
+  seek(percent: number): void;
+  /** 设置音量 0-1 */
+  setVolume(v: number): void;
+  /** 设置频谱响应灵敏度 0.1–1（越低越平滑），默认 0.5 */
+  setSensitivity(v: number): void;
+  /** 设置输出上限 0.1–1（限制最大幅值），默认 1.0 */
+  setCeiling(v: number): void;
+  /** 设置是否循环播放，默认 true */
+  setLoop(enabled: boolean): void;
+  /** 切换是否使用真实频谱替代模拟数据 */
+  setActive(active: boolean): void;
+  /** 销毁清理 */
+  destroy(): void;
+  /** 是否正在播放 */
+  readonly isPlaying: boolean;
+  /** 是否已加载文件 */
+  readonly isLoaded: boolean;
+  /** 真实频谱是否处于激活状态 */
+  readonly isActive: boolean;
+  /** 当前播放位置（秒） */
+  readonly currentTime: number;
+  /** 总时长（秒） */
+  readonly duration: number;
+  /** 文件名 */
+  readonly fileName: string;
+}
+
 export interface MediaMockController {
   play(): void;
   pause(): void;

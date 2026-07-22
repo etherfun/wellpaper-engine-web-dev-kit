@@ -166,9 +166,10 @@ export const PANEL_STYLES = `
 }
 #__we_devkit_panel .section-header .arrow {
   margin-right: 8px;
-  font-size: 10px;
+  font-size: 12px;
+  line-height: 1;
   transition: transform 0.2s;
-  color: #666;
+  color: #ccc;
 }
 #__we_devkit_panel .section-header .arrow.open {
   transform: rotate(90deg);

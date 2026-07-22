@@ -18,6 +18,7 @@ export function createSection(
   const arrow = document.createElement('span');
   arrow.className = 'arrow' + (defaultOpen ? ' open' : '');
   arrow.textContent = '▶';
+  arrow.title = defaultOpen ? 'Collapse' : 'Expand';
   header.appendChild(arrow);
 
   const title = document.createElement('span');

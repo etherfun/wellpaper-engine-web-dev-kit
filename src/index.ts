@@ -17,6 +17,7 @@
  */
 
 import { createAudioSimulator } from './audioSimulator';
+import { createMp3Player } from './mp3Player';
 import { detectEnvironment } from './environment';
 import { createLifecycleMock } from './lifecycleMock';
 import { createMediaMock } from './mediaMock';
@@ -36,6 +37,7 @@ import type {
   MediaController,
   MediaMockController,
   MockTrack,
+  Mp3PlayerController,
   PanelConfig,
   PropertiesController,
   RequiredConfig,
@@ -278,14 +280,32 @@ function createInternalState(config: RequiredConfig): InternalState {
 
 function installAudioDispatch(
   audioSim: AudioSimulatorController | undefined,
+  mp3Player: Mp3PlayerController | undefined,
   audioEnabledRef: { current: boolean },
   state: InternalState
 ): void {
-  if (!audioSim) return;
+  const w = window as unknown as Record<string, unknown>;
+
+  // 回放前置补丁缓存的 audio listener 调用
+  // （壁纸 bundle.js 在 dev-kit 之前加载时，回调被暂存到 __weAudioPrePatch）
+  const prePatchQueue = w.__weAudioPrePatch as unknown[] | undefined;
+
+  // 移除前置补丁的 Object.defineProperty 拦截，恢复为普通属性
+  // （否则 w.wallpaperRegisterAudioListener = xxx 会被 setter 捕获，不会真正赋值）
+  delete w.wallpaperRegisterAudioListener;
 
   const listeners = new Set<(data: Float32Array) => void>();
-  const w = window as unknown as Record<string, unknown>;
   const original = w.wallpaperRegisterAudioListener;
+
+  if (Array.isArray(prePatchQueue)) {
+    for (const cb of prePatchQueue) {
+      if (typeof cb === 'function') {
+        listeners.add(cb as (data: Float32Array) => void);
+      }
+    }
+    delete w.__weAudioPrePatch;
+  }
+
   w.wallpaperRegisterAudioListener = (cb: unknown) => {
     if (typeof cb === 'function') {
       listeners.add(cb as (data: Float32Array) => void);
@@ -295,11 +315,12 @@ function installAudioDispatch(
     }
   };
 
-  audioSim.start();
+  if (audioSim) {
+    audioSim.start();
+  }
 
   const dispatchAudioFrame = (frame: Float32Array): void => {
     if ((window as unknown as Record<string, unknown>)['__weLifecyclePaused'] === true) return;
-    if (!audioEnabledRef.current) return;
     const arr = Array.from(frame);
     for (const listener of listeners) {
       try {
@@ -310,10 +331,9 @@ function installAudioDispatch(
     }
   };
 
-  // Replace audioSim's callback so we control dispatch
-  // (audioSim's callback is wired inside createAudioSimulator via the dispatcher below)
   state.onDestroy(() => {
-    audioSim.stop();
+    audioSim?.stop();
+    mp3Player?.destroy();
     if (typeof original === 'undefined') {
       delete w.wallpaperRegisterAudioListener;
     } else {
@@ -321,8 +341,8 @@ function installAudioDispatch(
     }
   });
 
-  // 暴露一个全局 frame dispatcher 供 audioSimulator 调用
-  (window as unknown as Record<string, unknown>).__weDevKitDispatchAudio = dispatchAudioFrame;
+  // 暴露全局 frame dispatcher 供 audioSim / mp3Player 调用
+  w.__weDevKitDispatchAudio = dispatchAudioFrame;
 }
 
 // ============================================================
@@ -397,30 +417,47 @@ export function createWeDevKit(options?: DevKitConfig): DevKitInstance {
   }
   const lifecycleController = createLifecycleController(lifecycleMock);
 
-  // 8. 音频模拟器
+  // 8. 音频模拟器 + MP3 播放器 + 分派桥
   let audioSim: AudioSimulatorController | undefined;
-  if (isAudioEnabled(config)) {
-    const ac = config.audio;
-    audioSim = createAudioSimulator(
+  let mp3Player: Mp3PlayerController | undefined;
+
+  const needsAudio = config.panel || isAudioEnabled(config);
+  if (needsAudio) {
+    if (isAudioEnabled(config)) {
+      const ac = config.audio;
+      audioSim = createAudioSimulator(
+        (frame: Float32Array) => {
+          const dispatcher = (window as unknown as {
+            __weDevKitDispatchAudio?: (frame: Float32Array) => void;
+          }).__weDevKitDispatchAudio;
+          dispatcher?.(frame);
+        },
+        {
+          amplitude: ac.amplitude,
+          bassBoost: ac.bassBoost,
+          variationSpeed: ac.variationSpeed,
+          frameRate: ac.frameRate,
+        },
+        state
+      );
+    }
+
+    // MP3 播放器（真实频谱），必须在 installAudioDispatch 前创建
+    mp3Player = createMp3Player(
       (frame: Float32Array) => {
-        // 由 __weDevKitDispatchAudio 全局桥接分发（在 installAudioDispatch 中设置）
         const dispatcher = (window as unknown as {
           __weDevKitDispatchAudio?: (frame: Float32Array) => void;
         }).__weDevKitDispatchAudio;
         dispatcher?.(frame);
       },
-      {
-        amplitude: ac.amplitude,
-        bassBoost: ac.bassBoost,
-        variationSpeed: ac.variationSpeed,
-        frameRate: ac.frameRate,
-      },
       state
     );
-    installAudioDispatch(audioSim, audioEnabledRef, state);
+
+    // 安装分派桥并启动音频（修补 wallpaperRegisterAudioListener + 暴露 __weDevKitDispatchAudio）
+    installAudioDispatch(audioSim, mp3Player, audioEnabledRef, state);
   }
 
-  // 9. 媒体 Mock
+  // 11. 媒体 Mock
   let mediaMock: MediaMockController | undefined;
   if (isMediaEnabled(config)) {
     const tracks = config.media.tracks;
@@ -428,7 +465,7 @@ export function createWeDevKit(options?: DevKitConfig): DevKitInstance {
   }
   const mediaController = createMediaController(mediaMock);
 
-  // 10. 控制面板
+  // 12. 控制面板
   let panelController: ReturnType<typeof createPanel> | undefined;
   if (isPanelEnabled(config)) {
     let audioDisableTimer: ReturnType<typeof setTimeout> | null = null;
@@ -438,6 +475,19 @@ export function createWeDevKit(options?: DevKitConfig): DevKitInstance {
       audioSimulator: audioSim,
       mediaMock,
       lifecycleMock,
+      mp3Player,
+      onAudioSourceToggle: (source: 'simulated' | 'mp3') => {
+        if (source === 'mp3') {
+          // 切换到真实频谱时，降低模拟音频的振幅避免干扰
+          audioSim?.setAmplitude(0);
+          audioSim?.fadeTo(0, 300);
+        } else {
+          // 切回模拟数据时恢复振幅
+          audioSim?.setAmplitude(0);
+          audioSim?.fadeTo(config.audio.amplitude, 300);
+        }
+        console.log(`[WE Dev Kit] Audio source switched to: ${source}`);
+      },
       setAudioEnabled: (enabled: boolean) => {
         // 如果淡出定时器还在运行，取消它（用户快速切换场景）
         if (audioDisableTimer !== null) {
@@ -478,7 +528,7 @@ export function createWeDevKit(options?: DevKitConfig): DevKitInstance {
     }
   }
 
-  // 11. 状态 + 实例装配
+  // 13. 状态 + 实例装配
   let destroyed = false;
 
   const stateRef: DevKitState = {
