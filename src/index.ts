@@ -322,10 +322,10 @@ function installAudioDispatch(
   const dispatchAudioFrame = (frame: Float32Array): void => {
     if ((window as unknown as Record<string, unknown>)['__weLifecyclePaused'] === true) return;
     if (!audioEnabledRef.current) return;
-    const arr = Array.from(frame);
     for (const listener of listeners) {
       try {
-        listener(arr as unknown as Float32Array);
+        // 每个 listener 独立拷贝，避免 listener 修改数组影响其他 listener
+        listener(new Float32Array(frame));
       } catch {
         /* ignore listener errors */
       }
@@ -355,10 +355,11 @@ function installAudioDispatch(
     // 清除已有动画
     if (zeroRafId !== null) { cancelAnimationFrame(zeroRafId); zeroRafId = null; }
     zeroFrameCount = 0;
-    const zero = new Float32Array(128);
     const MAX_ZERO_FRAMES = 60; // ~1000ms at 60fps
 
     function pushZero(): void {
+      // 每帧创建新数组，避免壁纸 listener 修改数组后下一帧读到脏数据
+      const zero = new Float32Array(128);
       for (const listener of listeners) {
         try { listener(zero); } catch { /* ignore */ }
       }
