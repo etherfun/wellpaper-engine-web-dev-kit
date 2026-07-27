@@ -6,11 +6,12 @@
  *
  * 策略顺序（任一匹配即判定为真实 WE）：
  * 1. CEF userAgent 特征（"cef" / "wallpaper-engine" / "wallpaperengine"）
- * 2. wallpaperPropertyListener 已被注入且不是 dev-kit mock
- * 3. file:// 协议加载且无 dev-kit 标记
- * 4. dev-server 端口（5175）或 dev-kit URL 参数
+ * 2. dev-server 端口（5175）或 dev-kit URL 参数 — 优先于 listener 检测，
+ *    防止项目自身设置的 wallpaperPropertyListener 被误判为真实 WE
+ * 3. file:// 协议 + 已注入的非 mock wallpaperPropertyListener
+ * 4. file:// 协议（保守回退）
  *
- * 优先级：dev-server 标记 > file:// 默认行为；保守回退到真 WE 以避免误改。
+ * 优先级：dev-server 标记 > file:// + listener > file:// 默认行为
  */
 
 export interface DetectionResult {
@@ -30,15 +31,9 @@ export function detectEnvironment(): DetectionResult {
     }
   }
 
-  const listener = (window as unknown as { wallpaperPropertyListener?: { applyUserProperties?: unknown; __weDevKitMocked?: boolean } }).wallpaperPropertyListener;
-  if (listener && typeof listener.applyUserProperties === 'function') {
-    if (listener.__weDevKitMocked) {
-      return { isRealWE: false, reason: 'listener is we-dev-kit mock' };
-    }
-    // 真正的 WE 环境已注入了 wallpaperPropertyListener
-    return { isRealWE: true, reason: 'wallpaperPropertyListener already present (non-mock)' };
-  }
-
+  // dev-server / dev-kit 标记优先于 listener 检测
+  // 因为许多壁纸项目会在自己的 main.ts 中设置 wallpaperPropertyListener，
+  // 不能仅凭其存在就判定为真实 WE
   const isFileProtocol = window.location.protocol === 'file:';
   const isDevKitPage =
     window.location.pathname.includes('browser-preview') ||
@@ -54,13 +49,16 @@ export function detectEnvironment(): DetectionResult {
     return { isRealWE: false, reason: 'dev server or dev-kit flag detected' };
   }
 
-  if (isFileProtocol && !isDevKitPage) {
-    return { isRealWE: true, reason: 'file:// protocol without dev-kit flag' };
-  }
-
+  // 仅在 file:// 协议下，wallpaperPropertyListener 的存在才可能是 WE 注入的
   if (isFileProtocol) {
+    const listener = (window as unknown as { wallpaperPropertyListener?: { applyUserProperties?: unknown; __weDevKitMocked?: boolean } }).wallpaperPropertyListener;
+    if (listener && typeof listener.applyUserProperties === 'function' && !listener.__weDevKitMocked) {
+      return { isRealWE: true, reason: 'file:// protocol with pre-existing (non-mock) wallpaperPropertyListener' };
+    }
+    // file:// 下没有 listener 时保守回退
     return { isRealWE: true, reason: 'file:// protocol (conservative default)' };
   }
 
+  // 非 CEF、非 file://、非 dev server → 浏览器开发模式
   return { isRealWE: false, reason: 'no WE signals detected' };
 }
