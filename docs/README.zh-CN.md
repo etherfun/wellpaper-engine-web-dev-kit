@@ -145,7 +145,9 @@ npm run build
 
 ## 文档
 
-完整 API 参考文档、类型定义、子控制器说明及 agent 使用示例请参见 **[docs/API.md](API.md)**。
+- **[API.md](API.md)** — API 参考文档
+
+包含完整 API 参考、类型定义、子控制器说明、构建时注入 API、Mp3Player 频谱播放器及 agent 使用示例。
 
 ## 功能特性
 
@@ -183,16 +185,18 @@ npm run build
 
 - 调用 `wallpaperPropertyListener.setPaused` 通知壁纸暂停状态
 - 劫持 `requestAnimationFrame` / `setTimeout` / `setInterval`，暂停时积累队列，恢复时依次执行
+- `destroy()` 时**自动恢复**所有被劫持的原始定时器函数
 - FPS 变化通过 `applyGeneralProperties` 推送
 - 暂停时自动注入 CSS 规则暂停动画（`animation-play-state: paused`）
 
 ### 属性配置控制
 
-从 `project.json` 读取 `general.properties` 定义，提供：
+从 `project.json` 读取 `general.properties` 定义，通过 `kit.properties.*` API 提供：
 
 - 属性定义查询：类型、值范围、选项列表
-- 可见性条件求值：解析 `.value == X` / `&&` / `||` 等表达式
+- 可见性条件求值：解析 `.value == X` / `&&` / `||` 等表达式（返回 `blockedBy`/`blockedValue`）
 - 翻译键丢失检查：定位未翻译的 UI 文本
+- 属性增删改：`addProperty()` / `updateProperty()` / `removeProperty()`
 - 多语言匹配：按浏览器语言精确匹配 → 语言前缀 → 回退到 en-us
 
 ### 控制面板
@@ -272,10 +276,20 @@ const visible = evaluateCondition(
 启动时自动判断运行环境，3 种检测策略：
 
 1. CEF userAgent 特征
-2. `wallpaperPropertyListener` 是否已被 WE 注入
+2. `wallpaperPropertyListener` 是否已被 WE 注入（区分 real WE 和 dev-kit mock）
 3. 加载协议 + dev-kit 标志位
 
 检测为真实 WE 环境时自动跳过模拟，不干扰正常壁纸运行。
+
+### MP3 频谱播放器
+
+Web Audio API 真实 MP3 播放与频谱提取，内置 DSP 处理流水线：
+
+- 高斯平滑 + bin 级 EMA 时间计权消除突刺和闪烁
+- 对数频带 RMS 合并（64 band，等比频率宽度）
+- 频带间水平平滑 + band 级 EMA
+- 峰值保持归一化，输出 Float32Array[128]
+- 支持灵敏度/输出上限/循环播放等参数调节
 
 ### 音频数据传入开关
 
@@ -285,15 +299,9 @@ const visible = evaluateCondition(
 
 自动补充 `setPaused`、`applyGeneralProperties`、`userDirectoryFilesAddedOrChanged`、`userDirectoryFilesRemoved` 方法，确保项目代码在浏览器中不会因缺少 WE API 而报错。使用 `Object.defineProperty` setter 拦截后续赋值，始终补齐缺失方法。
 
-### 属性配置控制
+### 属性序列化
 
-从 `project.json` 读取 `general.properties` 定义，提供：
-
-- 属性定义查询：类型、值范围、选项列表
-- 可见性条件求值：解析 `.value == X` / `&&` / `||` 等表达式
-- 翻译键丢失检查：定位未翻译的 UI 文本
-- 多语言匹配：按浏览器语言精确匹配 → 语言前缀 → 回退到 en-us
-- 属性序列化：将当前属性列表导出为 project.json 格式
+支持将当前属性列表序列化为 project.json 格式并导出下载。
 
 ## 项目结构
 
@@ -301,12 +309,15 @@ const visible = evaluateCondition(
 src/
   index.ts               # 主入口 createWeDevKit()
   types.ts               # 全部类型定义
+  inject.ts              # 构建时注入工具（prepareDevBuild / injectIntoHtml）
   environment.ts         # 真实 WE 环境检测
   propertyMock.ts        # wallpaperPropertyListener 补充
   audioSimulator.ts      # 128 元素频谱生成器
-  mediaMock.ts           # 媒体集成模拟（4 listener + 预置曲库）
+  audioBridge.ts         # 音频状态机中枢（收敛 listener/帧分发/零帧归零/源切换）
+  mp3Player.ts           # MP3 播放器 + 真实频谱提取（DSP 流水线）
+  mediaMock.ts           # 媒体集成模拟（5 listener + 预置曲库）
   rgbMock.ts             # RGB LED 插件模拟
-  lifecycleMock.ts       # 生命周期事件（含暂停 CSS 注入）
+  lifecycleMock.ts       # 生命周期事件（含暂停 CSS 注入 + JS 定时器恢复）
   panel/
     index.ts             # 控制面板控制器
     renderer.ts          # DOM 渲染（Shadow DOM 隔离）
@@ -324,6 +335,12 @@ src/
       rgb.ts             # RGB 数据监控 UI
     modal/
       propertyEditor.ts  # 属性编辑弹窗 V2（拖拽/翻译编辑器/类型控件）
+  utils/
+    color.ts             # 颜色工具（hex 转换、调色板提取）
+    dom.ts               # DOM 工具（可拖拽宿主、Shadow DOM 容器）
+    imageData.ts         # 像素 ↔ ImageData 互转 + SVG 封面生成
+    time.ts              # 时间格式化 + debounce
+    windowPatching.ts    # 通用 window 注入/还原工具
 ```
 
 ## 构建

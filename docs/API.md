@@ -1,6 +1,6 @@
 # wallpaper-engine-web-dev-kit API 文档
 
-> 版本: 0.1.0 (v2)
+> 版本: 0.1.0 | 最后更新: 2026-07-27
 
 ## 目录
 
@@ -10,8 +10,10 @@
 4. [RgbController — RGB 数据获取](#rgbcontroller--rgb-数据获取)
 5. [LifecycleController — 生命周期控制](#lifecyclecontroller--生命周期控制)
 6. [PropertiesController — 配置项控制](#propertiescontroller--配置项控制)
-7. [类型定义参考](#类型定义参考)
-8. [Agent 使用示例](#agent-使用示例)
+7. [Mp3PlayerController — MP3 频谱播放器](#mp3playercontroller--mp3-频谱播放器)
+8. [类型定义参考](#类型定义参考)
+9. [构建时注入 API](#构建时注入-api)
+10. [Agent 使用示例](#agent-使用示例)
 
 ---
 
@@ -36,7 +38,7 @@ function createWeDevKit(options?: DevKitConfig): DevKitInstance
 | `properties` | `boolean` | `true` | 属性监听补齐 |
 | `rgb` | `boolean` | `true` | RGB LED 模拟 |
 | `lifecycle` | `boolean` | `true` | 生命周期事件 |
-| `panel` | `boolean \| PanelConfig` | `true` | 控制面板配置 |
+| `panel` | `boolean \| PanelConfig` | `true` | 控制面板。设为 `false` 完全禁用面板 |
 
 #### AudioConfig
 
@@ -66,8 +68,11 @@ function createWeDevKit(options?: DevKitConfig): DevKitInstance
 ### 示例
 
 ```typescript
-// 基础用法
+// 基础用法（启用全部功能）
 const kit = createWeDevKit();
+
+// 完全禁用面板（仅 API 可用）
+const kit = createWeDevKit({ panel: false });
 
 // 仅启用面板和 RGB
 const kit = createWeDevKit({ audio: false, media: false });
@@ -94,13 +99,13 @@ const kit = createWeDevKit({
 
 | 方法 | 签名 | 说明 |
 |---|---|---|
-| `destroy` | `(): void` | 销毁所有 mock，恢复原始状态 |
+| `destroy` | `(): void` | 销毁所有 mock，恢复原始状态（包括 JS 定时器、CSS 样式、window 全局变量） |
 | `togglePanel` | `(): void` | 切换控制面板显示 |
 | `getConfig` | `(): Readonly<DevKitConfig>` | 获取当前配置（只读快照） |
-| `pushProperties` | `(props: Record<string, unknown>): void` | 手动触发一次属性推送 |
+| `pushProperties` | `(props: Record<string, unknown>): void` | 手动触发一次属性推送（调用 `applyUserProperties`） |
 | `pushAudioFrame` | `(): void` | 手动触发音频数据推送 |
 | `nextTrack` | `(): void` | 手动切换曲目 |
-| `setAudioEnabled` | `(enabled: boolean): void` | **Task 0** 设置音频数据传入开关 |
+| `setAudioEnabled` | `(enabled: boolean): void` | 设置音频数据传入开关（关闭时自动零帧归零） |
 
 ### 状态 (state)
 
@@ -110,10 +115,12 @@ interface DevKitState {
   isPanelVisible: boolean;     // 面板是否可见
   currentTrackIndex: number;   // 当前曲目索引
   playbackState: PlaybackState; // 播放状态
-  isRgbPluginLoaded: boolean;  // RGB 插件是否已加载
-  isAudioEnabled: boolean;     // Task 0 音频数据传入是否启用
+  isRgbPluginLoaded: boolean;  // RGB 插件是否已加载（动态 getter）
+  isAudioEnabled: boolean;     // 音频数据传入是否启用
 }
 ```
+
+> `state` 的所有字段都通过 getter 懒求值，始终反映最新状态。
 
 ### 子控制器
 
@@ -124,7 +131,6 @@ interface DevKitState {
 | `lifecycle` | `LifecycleController` | 生命周期控制 |
 | `properties` | `PropertiesController` | 配置项控制 |
 
----
 
 ## MediaController — 媒体集成控制
 
@@ -226,7 +232,7 @@ interface MockTrack {
 
 ## RgbController — RGB 数据获取
 
-模拟 WE 的 LED / CUE 插件加载机制，截获 `setAllDevicesByImageData` 调用并提供解码后的数据访问。
+截获 `window.wpPlugins.led.setAllDevicesByImageData` 调用（WE LED 插件接口），提供解码后的数据访问和手动模拟能力。
 
 ### 方法
 
@@ -254,10 +260,10 @@ interface RgbFrameData {
 
 ### 内部机制
 
-1. **插件加载模拟**：启动后 200ms 加载 `led` 插件，500ms 加载 `cue` 插件，通过 `wallpaperPluginListener.onPluginLoaded` 通知
-2. **帧捕获**：项目通过 `window.wpPlugins.led.setAllDevicesByImageData(imageData, width, height)` 发送 LED 数据时，自动解码并存储
-3. **ImageData 解码**：RGB 像素数组 → 创建 canvas `ImageData`（含 alpha 通道），可直接用于 `ctx.putImageData()`
-4. **调色板提取**：将画面分为 10×10 网格，对每个格子取平均色并量化到 16 阶，聚合后取前 8 种
+1. **帧捕获**：项目通过 `window.wpPlugins.led.setAllDevicesByImageData(imageData, width, height)` 发送 LED 数据时，自动解码并存储帧数据
+2. **ImageData 解码**：RGB 像素数组 → 创建 canvas `ImageData`（含 alpha 通道），可直接用于 `ctx.putImageData()`
+3. **调色板提取**：将画面分为 10×10 网格，对每个格子取平均色并量化到 16 阶，聚合后取前 8 种
+4. **手动模拟**：通过 `simulateFrame()` 不依赖真实插件即可生成测试数据
 
 ### 示例
 
@@ -285,7 +291,7 @@ kit.rgb.simulateFrame(100, 20);
 
 ## LifecycleController — 生命周期控制
 
-模拟 WE 的暂停/恢复/FPS 变化等生命周期操作。
+模拟 WE 的暂停/恢复/FPS 变化等生命周期操作。`destroy()` 时自动恢复所有被劫持的原始 JS 定时器函数。
 
 ### 方法
 
@@ -301,25 +307,17 @@ kit.rgb.simulateFrame(100, 20);
 |---|---|---|
 | `isPaused` | `boolean` | 是否处于暂停状态 |
 
-### 暂停背后的行为
+### 暂停时的完整行为
 
-`setPaused` 经过 `propertyMock` 的处理，会：
-1. 调用项目中已注册的 `setPaused` 回调
-2. 如果项目没有注册，触发 `__we_paused_change` 自定义事件
-3. 项目内会暂停音频播放、停止 RGB 帧推送、暂停粒子/流体效果
+`kit.lifecycle.pause()` 会同步执行以下操作：
 
-### Task 0-1 — 暂停 CSS 注入
+1. **调用项目回调**：调用项目中已注册的 `wallpaperPropertyListener.setPaused(true)`
+2. **CSS 动画暂停**：`<html>` 元素添加 class `wpxPausePseudoAnimationAll`，注入 `<style>` 规则 `animation-play-state: paused !important`
+3. **JS 定时器劫持**：拦截 `setTimeout` / `setInterval` / `requestAnimationFrame`，暂停期间新注册的调用会被队列化
 
-`kit.lifecycle.pause()` 额外模拟 WE 的 HTML/CSS 暂停行为：
-1. `<html>` 元素添加 class `wpxPausePseudoAnimationAll`
-2. 注入 `<style id="__we_pause_animation">` 规则：
-   ```css
-   .wpxPausePseudoAnimationAll * {
-     animation-play-state: paused !important;
-   }
-   ```
-3. `kit.lifecycle.resume()` 移除 class 和 style 元素
-4. `kit.destroy()` 时自动清理
+`kit.lifecycle.resume()` 反向操作：移除 CSS 暂停、回放队列中的定时器/RAF 调用。
+
+`kit.destroy()` 时**自动恢复**所有被劫持的原始定时器函数到 `window` 上。
 
 ### FPS 变化
 
@@ -331,7 +329,9 @@ kit.rgb.simulateFrame(100, 20);
 
 ## PropertiesController — 配置项控制
 
-从 `project.json` 读取 `general.properties` 定义，提供属性可见性查询、翻译键丢失检查、属性增删改等功能。
+从 `project.json` 读取 `general.properties` 定义，提供属性可见性查询（含条件表达式求值）、翻译键丢失检查、属性增删改等功能。
+
+> **数据来源**：PropertiesController 桥接到面板内部的属性缓存。当面板启用时数据来源于 `loadProjectProperties()` 的实时解析结果；当面板未启用（`panel: false`）时返回空集合。
 
 ### 方法
 
@@ -475,12 +475,72 @@ kit.properties.addProperty({
 
 ---
 
+## Mp3PlayerController — MP3 频谱播放器
+
+基于 Web Audio API 的真实 MP3 播放与频谱提取。内置对数频带合并、高斯平滑、时间计权、峰值保持等 DSP 处理流水线，提取 64 条频带的真实频谱数据（替代模拟音频）。
+
+> 此控制器通过面板的音频 section 暴露 UI 控件，通过 AudioBridge 切换模拟/真实频谱。
+
+### 方法
+
+| 方法 | 签名 | 说明 |
+|---|---|---|
+| `loadFile` | `(file: File): Promise<void>` | 加载 MP3 文件（自动解码到 AudioBuffer） |
+| `play` | `(): void` | 开始播放 |
+| `pause` | `(): void` | 暂停播放（保留位置） |
+| `stop` | `(): void` | 停止播放（重置到开头） |
+| `seek` | `(percent: number): void` | 按百分比 0-100 跳转 |
+| `setVolume` | `(v: number): void` | 设置音量 0-1 |
+| `setSensitivity` | `(v: number): void` | 频谱响应灵敏度 0.1–1（越低越平滑），默认 0.5 |
+| `setCeiling` | `(v: number): void` | 输出上限 0.1–1（限制最大幅值），默认 1.0 |
+| `setLoop` | `(enabled: boolean): void` | 是否循环播放，默认 true |
+| `setActive` | `(active: boolean): void` | 切换真实频谱替代模拟数据 |
+| `destroy` | `(): void` | 清理 AudioContext 和所有资源 |
+
+### 只读属性
+
+| 属性 | 类型 | 说明 |
+|---|---|---|
+| `isPlaying` | `boolean` | 是否正在播放 |
+| `isLoaded` | `boolean` | 是否已加载文件 |
+| `isActive` | `boolean` | 真实频谱是否处于激活状态 |
+| `currentTime` | `number` | 当前播放位置（秒） |
+| `duration` | `number` | 总时长（秒） |
+| `fileName` | `string` | 文件名 |
+
+### 频谱处理流水线
+
+```
+AnalyserNode.getByteFrequencyData (2048 FFT)
+  → 高斯平滑（radius=2, sigma=1.0，消除突刺）
+  → bin 级 EMA 时间计权（history=4，减少闪烁）
+  → 对数频带 RMS 合并（64 band，等比频率宽度）
+  → 频带间水平平滑（3 点中心加权）
+  → band 级 EMA（灵敏度² 控制）
+  → 峰值保持归一化
+  → 输出 Float32Array[128]（左 0-63 / 右 64-127）
+```
+
+---
+
 ## 类型定义参考
 
 ### PlaybackState
 
 ```typescript
 type PlaybackState = 'playing' | 'paused' | 'stopped';
+```
+
+### AudioMode
+
+```typescript
+type AudioMode = 'beats' | 'melody' | 'mixed';
+```
+
+### AudioSourceType
+
+```typescript
+type AudioSourceType = 'simulated' | 'mp3';
 ```
 
 ### Wallpaper Engine 全局 API 模拟
@@ -499,6 +559,69 @@ dev-kit 在 `window` 上注入以下全局 API：
 | `window.wallpaperRegisterMediaThumbnailListener` | 媒体缩略图监听注册 |
 | `window.wallpaperRegisterMediaPlaybackListener` | 媒体播放状态监听注册 |
 | `window.wallpaperRegisterMediaTimelineListener` | 媒体时间线监听注册 |
+
+---
+
+## 构建时注入 API
+
+`wallpaper-engine-web-dev-kit/inject` 子模块提供将 dev-kit 注入现有壁纸项目构建产物的能力，无需修改项目源码。
+
+### injectIntoHtml()
+
+将 dev-kit 脚本注入到 HTML 字符串中。纯字符串变换，浏览器/Node 均可使用。
+
+```typescript
+function injectIntoHtml(html: string, options?: InjectOptions): string
+```
+
+#### InjectOptions
+
+| 字段 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `config` | `Record<string, unknown>` | 全部启用 | DevKit 配置对象（传给 createWeDevKit） |
+| `scriptSrc` | `string` | `'./we-dev-kit/index.global.js'` | script 标签 src 路径（相对于 HTML） |
+| `autoCreate` | `boolean` | `true` | 是否自动调用 `WeDevKit.createWeDevKit(config)` |
+| `insertAt` | `'before-body-end' \| 'after-body-start' \| 'before-head-end'` | `'before-body-end'` | 注入位置 |
+
+```typescript
+import fs from 'node:fs';
+import { injectIntoHtml } from 'wallpaper-engine-web-dev-kit/inject';
+
+const html = fs.readFileSync('dist/index.html', 'utf8');
+const modified = injectIntoHtml(html, { config: { panel: true } });
+fs.writeFileSync('dev/index.html', modified);
+```
+
+### prepareDevBuild()
+
+一键准备开发构建：复制项目产物 + 注入 dev-kit 脚本 + 复制 dev-kit JS 文件。
+
+```typescript
+function prepareDevBuild(options: DevBuildOptions): void
+```
+
+#### DevBuildOptions
+
+| 字段 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `inputDir` | `string` | —（必需） | 项目的构建产物目录（如 `dist/`） |
+| `outputDir` | `string` | `'dev'` | 开发用输出目录 |
+| `config` | `Record<string, unknown>` | 全部启用 | DevKit 配置对象 |
+| `scriptSrc` | `string` | 自动 | script src 路径 |
+| `kitDistPath` | `string` | 自动（node_modules） | dev-kit dist 目录路径 |
+| `targetDirName` | `string` | `'we-dev-kit'` | dev-kit 文件放置的子目录名 |
+
+```typescript
+import { prepareDevBuild } from 'wallpaper-engine-web-dev-kit/inject';
+
+prepareDevBuild({
+  inputDir: 'dist',
+  outputDir: 'dev',
+  config: { panel: true, audio: true, media: true, rgb: true, lifecycle: true },
+});
+```
+
+> **流程**：`inputDir` → 复制到 → `outputDir` → 注入 dev-kit → 打开 `outputDir/index.html` 调试。原始构建产物不会被修改。
 
 ---
 
@@ -529,7 +652,7 @@ kit.media.pause();
 ### 场景 2：检查属性翻译
 
 ```typescript
-const kit = createWeDevKit({ panel: false });
+const kit = createWeDevKit();
 
 // 等待 project.json 加载
 await new Promise(r => setTimeout(r, 1000));
@@ -540,7 +663,7 @@ if (bad.length > 0) {
   console.log('需要补充翻译的键:', bad.map(b => b.i18nKey));
 }
 
-// 检查特定属性
+// 检查特定属性的可见性（含实时条件求值）
 const vis = kit.properties.getVisibility('audio_visual_model');
 if (!vis.visible) {
   console.log(`原因: ${vis.blockedBy} = ${vis.blockedValue}`);
@@ -548,6 +671,15 @@ if (!vis.visible) {
 
 // 获取所有可见属性
 const visProps = kit.properties.getVisibleProperties();
+console.log(`可见属性: ${visProps.map(p => p.key).join(', ')}`);
+
+// 添加新属性
+kit.properties.addProperty({
+  key: 'my_new_prop',
+  type: 'bool',
+  value: true,
+  text: 'ui_my_new_prop',
+});
 ```
 
 ### 场景 3：模拟 RGB 数据
@@ -588,35 +720,33 @@ kit.lifecycle.resume();
 kit.lifecycle.setFps(15);
 ```
 
-### 场景 5：音频开关 + 暂停 CSS
+### 场景 5：音频开关
 
 ```typescript
 const kit = createWeDevKit({ panel: false });
 
-// 检查音频状态
 console.log('音频开启:', kit.state.isAudioEnabled); // true
 
-// 关闭音频（音频帧不再分发到 wallpaperRegisterAudioListener）
+// 关闭音频（零帧归零 + 模拟器淡出）
 kit.setAudioEnabled(false);
 
-// 重新开启
+// 重新开启（模拟器淡入）
 kit.setAudioEnabled(true);
 ```
 
-### 场景 6：暂停 CSS 注入模拟
+### 场景 6：生命周期暂停与恢复
 
 ```typescript
 const kit = createWeDevKit({ panel: false });
 
-// 模拟 WE 暂停 — <html> 会添加 wpxPausePseudoAnimationAll class，
-// 并注入 CSS 规则暂停所有元素的 animation
+// 暂停 — 暂停 CSS 动画 + 拦截 JS 定时器
 kit.lifecycle.pause();
-console.log(kit.lifecycle.isPaused); // true
-// 检查 html class
+console.log('已暂停:', kit.lifecycle.isPaused); // true
 console.log(document.documentElement.classList.contains('wpxPausePseudoAnimationAll')); // true
 
-// 恢复 — class 和 CSS 规则会被移除
+// 恢复 — 移除 CSS 动画暂停 + 回放队列中的定时器
 kit.lifecycle.resume();
+console.log('已恢复:', !kit.lifecycle.isPaused); // true
 ```
 
 ### 场景 7：完整初始化 + 销毁
@@ -632,6 +762,6 @@ const kit = createWeDevKit({
 
 // ... 使用 kit ...
 
-// 清理所有
+// 销毁：恢复所有原始 window API、CSS 样式、JS 定时器
 kit.destroy();
 ```
