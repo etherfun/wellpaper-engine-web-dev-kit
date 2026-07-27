@@ -147,7 +147,9 @@ export function createPanel(deps: PanelDeps) {
             if (!prop.text || prop.text === prop.key) continue;
             const dn = currentLocale[prop.text]?.trim();
             prop.displayName = dn || prop.text;
-            prop.missingTranslation = !dn;
+            // 只有存在 localization 且找不到对应翻译键时才标记为丢失
+            const hasAnyKeys = Object.keys(allLocalizations).some(k => Object.keys(allLocalizations[k] ?? {}).length > 0);
+            prop.missingTranslation = hasAnyKeys && !dn;
             if (prop.type === 'combo') {
               const rawOpts = (rawDefs[prop.key] as { options?: { value: unknown; label: string }[] } | undefined)?.options;
               if (rawOpts) {
@@ -176,7 +178,6 @@ export function createPanel(deps: PanelDeps) {
           const dn = localeMap[prop.text]?.trim();
           prop.displayName = dn || prop.text;
           prop.missingTranslation = hasAnyKeys && !dn;
-          prop.missingTranslation = !dn;
           if (prop.type === 'combo') {
             const rawOpts = (rawDefs[prop.key] as { options?: { value: unknown; label: string }[] } | undefined)?.options;
             if (rawOpts) {
@@ -284,7 +285,7 @@ export function createPanel(deps: PanelDeps) {
       panelController = null;
     }
     delete (window as unknown as Record<string, unknown>).__weDevKitPropertiesChanged;
-    delete (window as unknown as Record<string, unknown>).__weDevKitExportJson;
+    delete (window as unknown as Record<string, unknown>).__weDevKitSaveProps;
     isVisible = false;
   }
 
@@ -306,6 +307,10 @@ export function createPanel(deps: PanelDeps) {
     destroy,
     updateRgbFrame,
     refreshProperties,
+    /** 获取属性上下文快照（供 PropertiesController 桥接） */
+    getPropertiesContext() {
+      return { props, rawDefs, appliedLanguage, allLocalizations, availableLanguages };
+    },
     get isVisible() {
       return isVisible;
     },

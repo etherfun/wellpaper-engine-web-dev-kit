@@ -9,30 +9,7 @@
  * 回退到语言前缀（如 "zh"），再回退到 "en-us"。
  */
 
-import type { ProjectPropertyDef } from '../types';
-
-// project.json 中属性定义的结构
-interface RawPropertyDef {
-  type: string;
-  value?: unknown;
-  text?: string;
-  min?: number;
-  max?: number;
-  /** slider 步进值 */
-  step?: number;
-  /** slider 小数精度 */
-  precision?: number;
-  /** slider 是否允许小数 */
-  fraction?: boolean;
-  /** file/directory 的文件类型过滤（如 "video"） */
-  fileType?: string;
-  /** directory 加载模式（"ondemand" | "fetchall"） */
-  mode?: string;
-  options?: { value: unknown; label: string }[];
-  condition?: string;
-  order?: number;
-  index?: number;
-}
+import type { ProjectPropertyDef, RawPropertyDef } from '../types';
 
 interface ProjectJson {
   general?: {

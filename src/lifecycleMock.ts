@@ -39,6 +39,8 @@ interface RafQueueItem {
 interface JsTimerHooks {
   pause: () => void;
   resume: () => void;
+  /** 恢复 window 上的原始定时器函数（仅 destroy 时调用） */
+  restore: () => void;
   installed: boolean;
 }
 
@@ -128,6 +130,20 @@ function installJsTimerHooks(): JsTimerHooks {
       const ivQueue = pausedIntervals.splice(0, pausedIntervals.length);
       for (const item of ivQueue) origSetInterval(item.cb, item.delay);
     },
+    /** 恢复 window 上的原始定时器函数（仅 destroy 时调用） */
+    restore(): void {
+      jsPaused = false;
+      (window as unknown as Record<string, unknown>)[LIFECYCLE_PAUSED_FLAG] = false;
+      w.requestAnimationFrame = origRaf;
+      w.cancelAnimationFrame = origCancelRaf;
+      w.setTimeout = origSetTimeout;
+      w.clearTimeout = origClearTimeout;
+      w.setInterval = origSetInterval;
+      w.clearInterval = origClearInterval;
+      pausedRaf.length = 0;
+      pausedTimeouts.length = 0;
+      pausedIntervals.length = 0;
+    },
     installed: true,
   };
 }
@@ -200,6 +216,7 @@ export function createLifecycleMock(state: InternalState): LifecycleMockControll
   state.onDestroy(() => {
     clearTimeout(initTimer);
     removePauseStyles(pauseStyleEl);
+    hooks.restore();
     delete (window as unknown as Record<string, unknown>)[LIFECYCLE_PAUSED_FLAG];
   });
 

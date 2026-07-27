@@ -35,6 +35,8 @@ export function detectEnvironment(): DetectionResult {
     if (listener.__weDevKitMocked) {
       return { isRealWE: false, reason: 'listener is we-dev-kit mock' };
     }
+    // 真正的 WE 环境已注入了 wallpaperPropertyListener
+    return { isRealWE: true, reason: 'wallpaperPropertyListener already present (non-mock)' };
   }
 
   const isFileProtocol = window.location.protocol === 'file:';

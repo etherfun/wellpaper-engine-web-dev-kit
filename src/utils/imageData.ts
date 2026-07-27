@@ -29,10 +29,17 @@ export function pixelsToImageData(
 }
 
 function base64Encode(svg: string): string {
-  // 浏览器优先用 btoa；服务端环境兜底（Node Buffer）
+  // 服务端环境（Node Buffer）
   const buf = (globalThis as unknown as { Buffer?: { from: (s: string) => { toString: (enc: string) => string } } }).Buffer;
   if (buf) return buf.from(svg).toString('base64');
-  return btoa(unescape(encodeURIComponent(svg)));
+  // 浏览器环境：使用 TextEncoder 替代已废弃的 unescape
+  const encoder = new TextEncoder();
+  const bytes = encoder.encode(svg);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]!);
+  }
+  return btoa(binary);
 }
 
 /** 从 data URI 提取图片的 4 块主色 */

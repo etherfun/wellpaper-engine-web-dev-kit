@@ -34,9 +34,9 @@ export function populateAudioSection(
     if (s) {
       bridge?.setEnabled(!s.enabled);
     } else {
-      // 无 bridge 时的兜底逻辑
-      const next = !(bridge?.getState().enabled ?? true);
-      cb.onAudioToggle(next);
+      // 无 bridge 时的兜底逻辑：反转当前 toggle 视觉状态
+      const isOn = toggleBtn.classList.contains('on');
+      cb.onAudioToggle(!isOn);
     }
   });
   toggleRow.appendChild(toggleBtn);

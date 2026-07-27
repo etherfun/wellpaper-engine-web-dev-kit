@@ -26,6 +26,7 @@ import { createMediaMock } from './mediaMock';
 import { createPanel } from './panel/index';
 import { installPropertyMock } from './propertyMock';
 import { createRgbMock } from './rgbMock';
+import { evaluateCondition } from './panel/conditionEvaluator';
 import type {
   AudioConfig,
   AudioSimulatorController,
@@ -41,7 +42,11 @@ import type {
   MockTrack,
   Mp3PlayerController,
   PanelConfig,
+  ProjectPropertyDef,
+  PropertyDefInput,
   PropertiesController,
+  PropertyTranslationStatus,
+  PropertyVisibility,
   RequiredConfig,
   ResolvedAudioConfig,
   ResolvedMediaConfig,
@@ -115,11 +120,6 @@ function isAudioEnabled(cfg: RequiredConfig): boolean {
 function isMediaEnabled(cfg: RequiredConfig): boolean {
   const m = cfg.media;
   return m.cycleIntervalMs > 0 || m.tracks.length > 0;
-}
-
-function isPanelEnabled(cfg: RequiredConfig): boolean {
-  const p = cfg.panel;
-  return p.position.x !== 0 || p.position.y !== 0 || !p.collapsed || p.theme === 'dark';
 }
 
 // ============================================================
@@ -277,27 +277,176 @@ function createInternalState(config: RequiredConfig): InternalState {
 }
 
 // ============================================================
-// Properties Controller
+// Properties Controller（桥接面板内部属性缓存）
 // ============================================================
 
-function createPropertiesController(state: InternalState): PropertiesController {
-  // 简化实现：仅暴露空状态；详细逻辑由 panel 内部维护
-  // 实际项目内未深度使用 PropertiesController 公共 API，保持轻量
-  void state;
-  return {
-    getProperty: () => undefined,
-    getAllProperties: () => [],
-    getVisibility: (key) => ({ key, visible: true, condition: null }),
-    getAllVisibility: () => [],
-    checkTranslation: (key) => ({ key, i18nKey: key, missing: false, displayName: key }),
-    getMissingTranslations: () => [],
-    getVisibleProperties: () => [],
-    getCurrentValues: () => ({}),
-    async reloadProperties() {},
-    addProperty: (def) => def as never,
-    updateProperty: () => undefined,
-    removeProperty: () => false,
+/** 面板暴露的属性上下文快照 */
+interface PropertiesContext {
+  props: ProjectPropertyDef[];
+  rawDefs: Record<string, unknown>;
+  appliedLanguage: string;
+  allLocalizations: Record<string, Record<string, string>>;
+  availableLanguages: string[];
+}
+
+/** 从条件表达式提取第一个属性名（如 "showDate.value == true" → "showDate"） */
+function extractFirstPropFromCondition(condition: string | null | undefined): string | undefined {
+  if (!condition) return undefined;
+  const m = condition.match(/^([a-zA-Z_]\w*)/);
+  return m ? m[1] : undefined;
+}
+
+function createPropertiesController(
+  getCtx: () => PropertiesContext | null,
+  state: InternalState,
+): PropertiesController {
+  const getProps = (): ProjectPropertyDef[] => getCtx()?.props ?? [];
+  const getDefs = (): Record<string, unknown> => getCtx()?.rawDefs ?? {};
+
+  function getPropValue(key: string): unknown {
+    const p = getProps().find(p => p.key === key);
+    return p?.value;
+  }
+
+  const controller: PropertiesController = {
+
+    getProperty(key: string): ProjectPropertyDef | undefined {
+      return getProps().find(p => p.key === key);
+    },
+
+    getAllProperties(): ProjectPropertyDef[] {
+      return [...getProps()];
+    },
+
+    getVisibility(key: string): PropertyVisibility {
+      const prop = getProps().find(p => p.key === key);
+      if (!prop) return { key, visible: true, condition: null };
+      if (!prop.condition) return { key, visible: true, condition: null };
+      const visible = evaluateCondition(prop.condition, getPropValue);
+      const blockedBy = visible ? undefined : extractFirstPropFromCondition(prop.condition);
+      const blockedValue = blockedBy ? getPropValue(blockedBy) : undefined;
+      return { key, visible, condition: prop.condition, blockedBy, blockedValue };
+    },
+
+    getAllVisibility(): PropertyVisibility[] {
+      return getProps().map(p => this.getVisibility(p.key));
+    },
+
+    checkTranslation(key: string): PropertyTranslationStatus {
+      const prop = getProps().find(p => p.key === key);
+      if (!prop) return { key, i18nKey: key, missing: false, displayName: key };
+      const i18nKey = prop.text ?? key;
+      return {
+        key,
+        i18nKey,
+        missing: prop.missingTranslation ?? false,
+        displayName: prop.displayName ?? key,
+      };
+    },
+
+    getMissingTranslations(): PropertyTranslationStatus[] {
+      return getProps()
+        .filter(p => p.missingTranslation)
+        .map(p => this.checkTranslation(p.key));
+    },
+
+    getVisibleProperties(): ProjectPropertyDef[] {
+      return getProps().filter(p => this.getVisibility(p.key).visible);
+    },
+
+    getCurrentValues(): Record<string, unknown> {
+      const out: Record<string, unknown> = {};
+      for (const p of getProps()) out[p.key] = p.value;
+      return out;
+    },
+
+    async reloadProperties(): Promise<void> {
+      const ctx = getCtx();
+      if (!ctx) return;
+      // 触发面板重新加载 project.json
+      const { loadProjectProperties } = await import('./panel/projectJsonReader');
+      const result = await loadProjectProperties();
+      // 更新面板内部缓存（通过 __weDevKitPropertiesChanged）
+      (ctx.props as ProjectPropertyDef[]).length = 0;
+      ctx.props.push(...result.properties);
+      ctx.rawDefs = result.raw as Record<string, unknown>;
+      ctx.allLocalizations = result.allLocalizations;
+      ctx.appliedLanguage = result.appliedLanguage;
+      ctx.availableLanguages = result.availableLanguages;
+      controller._onChange?.(result.properties);
+    },
+
+    addProperty(def: PropertyDefInput): ProjectPropertyDef {
+      const newProp: ProjectPropertyDef = {
+        key: def.key,
+        type: def.type,
+        value: def.value ?? '',
+        text: def.text,
+        displayName: def.displayName ?? def.text ?? def.key,
+        missingTranslation: false,
+        order: def.order ?? 9999,
+        index: def.index,
+        condition: def.condition,
+        options: def.options,
+        min: def.min,
+        max: def.max,
+        step: def.step,
+        precision: def.precision,
+        fraction: def.fraction,
+        fileType: def.fileType,
+        mode: def.mode,
+      };
+      const ctx = getCtx();
+      if (ctx) {
+        const existing = ctx.props.findIndex(p => p.key === def.key);
+        if (existing >= 0) {
+          ctx.props[existing] = newProp;
+        } else {
+          ctx.props.push(newProp);
+        }
+        controller._onChange?.(ctx.props);
+      }
+      return newProp;
+    },
+
+    updateProperty(key: string, def: Partial<PropertyDefInput>): ProjectPropertyDef | undefined {
+      const ctx = getCtx();
+      if (!ctx) return undefined;
+      const existing = ctx.props.find(p => p.key === key);
+      if (!existing) return undefined;
+      if (def.type !== undefined) existing.type = def.type;
+      if (def.value !== undefined) existing.value = def.value;
+      if (def.text !== undefined) existing.text = def.text;
+      if (def.displayName !== undefined) existing.displayName = def.displayName;
+      if (def.order !== undefined) existing.order = def.order;
+      if (def.condition !== undefined) existing.condition = def.condition;
+      if (def.options !== undefined) existing.options = def.options;
+      if (def.min !== undefined) existing.min = def.min;
+      if (def.max !== undefined) existing.max = def.max;
+      if (def.step !== undefined) existing.step = def.step;
+      if (def.precision !== undefined) existing.precision = def.precision;
+      if (def.fraction !== undefined) existing.fraction = def.fraction;
+      if (def.fileType !== undefined) existing.fileType = def.fileType;
+      if (def.mode !== undefined) existing.mode = def.mode;
+      if (def.index !== undefined) existing.index = def.index;
+      controller._onChange?.(ctx.props);
+      return existing;
+    },
+
+    removeProperty(key: string): boolean {
+      const ctx = getCtx();
+      if (!ctx) return false;
+      const idx = ctx.props.findIndex(p => p.key === key);
+      if (idx < 0) return false;
+      ctx.props.splice(idx, 1);
+      controller._onChange?.(ctx.props);
+      return true;
+    },
   };
+
+  void state;
+  void getDefs;
+  return controller;
 }
 
 // ============================================================
@@ -328,8 +477,12 @@ export function createWeDevKit(options?: DevKitConfig): DevKitInstance {
     installPropertyMock(state);
   }
 
-  // 5. Properties 控制器
-  const propertiesController = createPropertiesController(state);
+  // 5. Properties 控制器（延迟注入面板数据上下文）
+  let propertiesCtx: (() => PropertiesContext | null) | null = null;
+  const propertiesController = createPropertiesController(
+    () => propertiesCtx?.() ?? null,
+    state,
+  );
 
   // 6. RGB Mock（panel 装载前必须先就绪，否则面板无法接收帧）
   let forwardRgbFrame: ((frame: RgbFrameData) => void) | null = null;
@@ -421,7 +574,7 @@ export function createWeDevKit(options?: DevKitConfig): DevKitInstance {
 
   // 12. 控制面板
   let panelController: ReturnType<typeof createPanel> | undefined;
-  if (isPanelEnabled(config)) {
+  if (options?.panel !== false) {
     panelController = createPanel({
       config,
       state,
@@ -439,6 +592,7 @@ export function createWeDevKit(options?: DevKitConfig): DevKitInstance {
     });
 
     forwardRgbFrame = (frame) => panelController!.updateRgbFrame(frame);
+    propertiesCtx = () => panelController!.getPropertiesContext();
     propertiesController._onChange = (newProps) => {
       panelController?.refreshProperties(newProps);
     };
@@ -526,8 +680,14 @@ export function createWeDevKit(options?: DevKitConfig): DevKitInstance {
 
     setAudioEnabled(enabled: boolean) {
       audioEnabledRef.current = enabled;
-      if (audioSim) {
-        audioSim.fadeTo(enabled ? config.audio.amplitude : 0, 800);
+      // 委托给 AudioBridge 统一管理（零帧归零 + 状态同步）
+      if (audioBridge) {
+        audioBridge.setEnabled(enabled);
+      } else {
+        // 无 bridge 时的兜底（仅直接操作模拟器）
+        if (audioSim) {
+          audioSim.fadeTo(enabled ? config.audio.amplitude : 0, 800);
+        }
       }
       console.log(`[WE Dev Kit] Audio ${enabled ? 'enabled' : 'disabled'} (fade ${enabled ? 'in' : 'out'})`);
     },
