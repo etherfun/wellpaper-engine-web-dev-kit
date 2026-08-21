@@ -88,7 +88,7 @@ The output `dev/` directory is fully self-contained — open `dev/index.html` in
 ### Module Import (npm / TypeScript Project)
 
 ```bash
-npm install wallpaper-engine-web-dev-kit
+npm install -D wallpaper-engine-web-dev-kit
 ```
 
 ```typescript

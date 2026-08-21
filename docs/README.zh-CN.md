@@ -87,7 +87,7 @@ npm run build:dev
 ### 模块导入（npm / TypeScript 项目）
 
 ```bash
-npm install wallpaper-engine-web-dev-kit
+npm install -D wallpaper-engine-web-dev-kit
 ```
 
 ```typescript

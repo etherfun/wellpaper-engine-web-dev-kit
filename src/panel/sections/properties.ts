@@ -266,6 +266,7 @@ export function populatePropertiesSection(
         };
         props.push(newProp);
         propValues[newProp.key] = newProp.value;
+        cb.onPropertyChange(newProp.key, newProp.value);
       }
     } else if (originalKey) {
       const existing = props.find((p) => p.key === originalKey);
@@ -286,6 +287,12 @@ export function populatePropertiesSection(
         existing.mode = def.mode;
         existing.index = def.index;
         recomputeMissing(existing);
+        // 同步 propValues（key 可能已改名）
+        if (def.key !== originalKey) {
+          delete propValues[originalKey];
+        }
+        propValues[def.key] = existing.value;
+        cb.onPropertyChange(def.key, existing.value);
       }
     }
     notifyChange();
@@ -303,6 +310,11 @@ export function populatePropertiesSection(
       default: return '';
     }
   }
+
+  // 延迟重渲染（避免滑块等连续输入时频繁重建 DOM）
+  const scheduleRenderProps = debounce(() => {
+    renderProps(filterState);
+  }, 150);
 
   function notifyChange(): void {
     const fn = (window as unknown as { __weDevKitPropertiesChanged?: (p: ProjectPropertyDef[]) => void }).__weDevKitPropertiesChanged;
@@ -491,6 +503,9 @@ export function populatePropertiesSection(
         checkbox.checked = Boolean(prop.value);
         checkbox.addEventListener('change', () => {
           prop.value = checkbox.checked;
+          propValues[prop.key] = prop.value;
+          cb.onPropertyChange(prop.key, prop.value);
+          scheduleRenderProps();
         });
         control.appendChild(checkbox);
         break;
@@ -517,6 +532,9 @@ export function populatePropertiesSection(
           const val = parseFloat(slider.value);
           numInput.value = precision > 0 ? val.toFixed(precision) : String(val);
           prop.value = val;
+          propValues[prop.key] = val;
+          cb.onPropertyChange(prop.key, val);
+          scheduleRenderProps();
         });
         numInput.addEventListener('change', () => {
           const v = parseFloat(numInput.value);
@@ -525,6 +543,9 @@ export function populatePropertiesSection(
             slider.value = String(clamped);
             numInput.value = precision > 0 ? clamped.toFixed(precision) : String(clamped);
             prop.value = clamped;
+            propValues[prop.key] = clamped;
+            cb.onPropertyChange(prop.key, clamped);
+            scheduleRenderProps();
           }
         });
 
@@ -547,6 +568,9 @@ export function populatePropertiesSection(
         select.addEventListener('change', () => {
           const numVal = Number(select.value);
           prop.value = Number.isNaN(numVal) ? select.value : numVal;
+          propValues[prop.key] = prop.value;
+          cb.onPropertyChange(prop.key, prop.value);
+          scheduleRenderProps();
         });
         control.appendChild(select);
         break;
@@ -563,6 +587,9 @@ export function populatePropertiesSection(
         colorPicker.addEventListener('input', () => {
           hexLabel.textContent = colorPicker.value;
           prop.value = hexToWeColor(colorPicker.value);
+          propValues[prop.key] = prop.value;
+          cb.onPropertyChange(prop.key, prop.value);
+          scheduleRenderProps();
         });
         colorRow.appendChild(colorPicker);
         colorRow.appendChild(hexLabel);
@@ -580,7 +607,12 @@ export function populatePropertiesSection(
         const textInput = document.createElement('input');
         textInput.type = 'text';
         textInput.value = String(prop.value ?? '');
-        textInput.addEventListener('input', () => { prop.value = textInput.value; });
+        textInput.addEventListener('input', () => {
+          prop.value = textInput.value;
+          propValues[prop.key] = prop.value;
+          cb.onPropertyChange(prop.key, prop.value);
+          scheduleRenderProps();
+        });
         control.appendChild(textInput);
         break;
       }
@@ -661,6 +693,8 @@ export function populatePropertiesSection(
     propValues[key] = value;
     const prop = props.find((p) => p.key === key);
     if (prop) prop.value = value;
+    cb.onPropertyChange(key, value);
+    scheduleRenderProps();
   }
 
   // ---- 监听过滤变化 ----
