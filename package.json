@@ -10,6 +10,14 @@
   ],
   "license": "GPL-3.0-only",
   "author": "etherfun",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/etherfun/wellpaper-engine-web-dev-kit.git"
+  },
+  "homepage": "https://github.com/etherfun/wellpaper-engine-web-dev-kit#readme",
+  "bugs": {
+    "url": "https://github.com/etherfun/wellpaper-engine-web-dev-kit/issues"
+  },
   "type": "module",
   "exports": {
     ".": {
